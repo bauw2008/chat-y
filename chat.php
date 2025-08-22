@@ -1,5 +1,5 @@
 <?php
-// chat.php - 聊天室主页面
+// chat.php - 修复版聊天室主页面
 session_start();
 
 // 检查数据库是否已初始化
@@ -9,6 +9,9 @@ $initialized = false;
 if (file_exists($dbFile)) {
     try {
         $db = new PDO("sqlite:$dbFile");
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+        // 检查数据库结构
         $stmt = $db->prepare("SELECT COUNT(*) FROM users WHERE username = 'admin'");
         $stmt->execute();
         $initialized = (bool)$stmt->fetchColumn();
@@ -35,11 +38,53 @@ $role = $_SESSION['role'] ?? 'user';
 
 // 更新最后活动时间
 $db = new PDO("sqlite:$dbFile");
+$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $stmt = $db->prepare("UPDATE users SET last_active=CURRENT_TIMESTAMP WHERE username=:u");
 $stmt->execute([':u' => $username]);
 
-// 使用DiceBear API生成头像（与JavaScript端保持一致）
+// 使用DiceBear API生成头像
 $avatar = "https://api.dicebear.com/6.x/pixel-art/svg?seed=" . urlencode($username);
+
+// 文件上传处理
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
+    $uploadDir = __DIR__ . '/uploads/';
+    
+    // 确保上传目录存在
+    if (!file_exists($uploadDir)) {
+        mkdir($uploadDir, 0777, true);
+    }
+    
+    $file = $_FILES['file-input'];
+    $fileName = time() . '_' . basename($file['name']);
+    $filePath = $uploadDir . $fileName;
+    
+    // 检查文件类型和大小
+    $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'text/plain'];
+    $maxFileSize = 5 * 1024 * 1024; // 5MB
+    
+    if (in_array($file['type'], $allowedTypes) && $file['size'] <= $maxFileSize) {
+        if (move_uploaded_file($file['tmp_name'], $filePath)) {
+            // 保存文件信息到数据库
+            $fileExt = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            $fileType = in_array($fileExt, ['jpg', 'jpeg', 'png', 'gif']) ? 'image' : 'file';
+            
+            $stmt = $db->prepare("INSERT INTO messages (username, message, type) VALUES (:u, :m, :t)");
+            $stmt->execute([
+                ':u' => $username,
+                ':m' => json_encode([
+                    'filename' => $file['name'],
+                    'saved_name' => $fileName,
+                    'type' => $fileType
+                ]),
+                ':t' => 'file'
+            ]);
+            
+            // 重定向以避免重复提交
+            header("Location: chat.php");
+            exit;
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -108,16 +153,21 @@ $avatar = "https://api.dicebear.com/6.x/pixel-art/svg?seed=" . urlencode($userna
 
         <div class="chat-area">
             <!-- 聊天内容区域 -->
-            <div id="chat-box" class="chat-box"></div>
+            <div id="chat-box" class="chat-box">
+                <!-- 消息将通过JavaScript动态加载 -->
+            </div>
             
             <!-- 工具栏区域 -->
             <div class="toolbar-container">
                 <div class="toolbar">
-                    <button type="button" class="toolbar-btn" onclick="document.getElementById('file-input').click()" title="上传文件">
+                    <form id="upload-form" action="chat.php" method="post" enctype="multipart/form-data" style="display: none;">
+                        <input type="file" name="file-input" id="file-input" required>
+                    </form>
+                    
+                    <button type="button" class="toolbar-btn" onclick="document.getElementById('file-input').click();" title="上传文件">
                         <span class="toolbar-icon">📎</span>
                         <span class="toolbar-label">上传</span>
                     </button>
-                    <input type="file" id="file-input" style="display: none">
                     
                     <button type="button" class="toolbar-btn" onclick="toggleEmojiPanel()" title="表情">
                         <span class="toolbar-icon">😊</span>
@@ -138,74 +188,89 @@ $avatar = "https://api.dicebear.com/6.x/pixel-art/svg?seed=" . urlencode($userna
             </div>
             
             <!-- 输入区域 -->
-            <form id="chat-form" class="chat-form">
-                <input type="text" id="message" class="chat-input" placeholder="输入消息..." required>
-                <button type="submit" class="send-btn">发送</button>
-            </form>
+			<form id="chat-form" class="chat-form">
+				<input type="text" id="message" name="message" class="chat-input" placeholder="输入消息..." required>
+				<button type="submit" class="send-btn">发送</button>
+			</form>
+			
         </div>
     </div>
 
-    <script>
-    const username = "<?php echo $username; ?>";
-    const role = "<?php echo $role; ?>";
-    
-    // 侧边菜单功能
-    function toggleSideMenu() {
-      document.querySelector('.user-list').classList.toggle('active');
-      document.querySelector('.side-menu-overlay').classList.toggle('active');
-    }
-    
-    function closeSideMenu() {
-      document.querySelector('.user-list').classList.remove('active');
-      document.querySelector('.side-menu-overlay').classList.remove('active');
-    }
-    
-    function logout() {
-      if (confirm('确定要退出登录吗？')) {
+<script>
+// 定义全局变量
+const username = "<?php echo $username; ?>";
+const role = "<?php echo $role; ?>";
+
+// 侧边菜单功能
+function toggleSideMenu() {
+    document.querySelector('.user-list').classList.toggle('active');
+    document.querySelector('.side-menu-overlay').classList.toggle('active');
+}
+
+function closeSideMenu() {
+    document.querySelector('.user-list').classList.remove('active');
+    document.querySelector('.side-menu-overlay').classList.remove('active');
+}
+
+function logout() {
+    if (confirm('确定要退出登录吗？')) {
         window.location.href = 'logout.php';
-      }
     }
-    
-    // 切换管理员面板
-    function toggleAdminPanel() {
-      const adminPanel = document.getElementById('admin-panel');
-      if (adminPanel) {
+}
+
+// 切换管理员面板
+function toggleAdminPanel() {
+    const adminPanel = document.getElementById('admin-panel');
+    if (adminPanel) {
         adminPanel.style.display = adminPanel.style.display === 'block' ? 'none' : 'block';
-      }
     }
-    
-    // 切换Emoji面板
-    function toggleEmojiPanel() {
-      const emojiPanel = document.getElementById('emoji-panel');
-      emojiPanel.style.display = emojiPanel.style.display === 'grid' ? 'none' : 'grid';
+}
+
+// 切换Emoji面板
+function toggleEmojiPanel() {
+    const emojiPanel = document.getElementById('emoji-panel');
+    emojiPanel.style.display = emojiPanel.style.display === 'grid' ? 'none' : 'grid';
+}
+
+// 显示更多工具
+function showMoreTools() {
+    alert('更多工具功能待开发');
+}
+
+// 文件上传自动提交
+document.getElementById('file-input').addEventListener('change', function() {
+    if (this.files.length > 0) {
+        document.getElementById('upload-form').submit();
     }
+});
+
+// 点击遮罩层关闭菜单
+document.querySelector('.side-menu-overlay').addEventListener('click', closeSideMenu);
+
+// 初始化一些示例emoji
+document.addEventListener('DOMContentLoaded', function() {
+    const emojiPanel = document.getElementById('emoji-panel');
+    const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳'];
     
-    // 显示更多工具
-    function showMoreTools() {
-      alert('更多工具功能待开发');
-    }
-    
-    // 点击遮罩层关闭菜单
-    document.querySelector('.side-menu-overlay').addEventListener('click', closeSideMenu);
-    
-    // 初始化一些示例emoji
-    document.addEventListener('DOMContentLoaded', function() {
-      const emojiPanel = document.getElementById('emoji-panel');
-      const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳'];
-      
-      emojis.forEach(emoji => {
+    emojis.forEach(emoji => {
         const emojiElement = document.createElement('div');
         emojiElement.className = 'emoji-item';
         emojiElement.textContent = emoji;
         emojiElement.addEventListener('click', function() {
-          document.getElementById('message').value += emoji;
-          document.getElementById('emoji-panel').style.display = 'none';
+            document.getElementById('message').value += emoji;
+            document.getElementById('emoji-panel').style.display = 'none';
         });
         emojiPanel.appendChild(emojiElement);
-      });
     });
-    </script>
     
-    <script src="assets/js/chat.js"></script>
+    // 滚动到聊天底部
+    const chatBox = document.getElementById('chat-box');
+    if (chatBox) {
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+});
+</script>
+
+<script src="assets/js/chat.js"></script>
 </body>
 </html>

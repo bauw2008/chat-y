@@ -1,23 +1,323 @@
 // assets/js/chat.js
 
-// 用户状态调试函数
-//function debugUserStatus(users) {
-    //console.group('🐛 用户状态调试');
-    //console.table(users.map(user => ({
-        //用户名: user.username,
-       // 在线状态: user.online ? '🟢 在线' : '🔴 离线',
-        //最后活动: user.last_active || '无记录',
-        //角色: user.role
-    //})));
-    //console.groupEnd();
-//}
-
-// 聊天室前端逻辑
-const emojis = ['😀','😂','😍','👍','🙏','😢','🎉','💯','❤️','🔥','✨','🎯','🤔','😴','🥳'];
+// ==================== 全局变量和配置 ====================
+let lastMessageId = 0;
+let isTyping = false;
+let typingTimer = null;
+let heartbeatInterval;
 let isScrolledToBottom = true;
 let autoScrollEnabled = true;
-let heartbeatInterval;
 
+// 表情列表
+const emojis = ['😀','😂','😍','👍','🙏','😢','🎉','💯','❤️','🔥','✨','🎯','🤔','😴','🥳'];
+
+// ==================== 私聊功能 ====================
+
+// 初始化私聊功能
+function initPrivateChat() {
+    if (!window.chatConfig || !window.chatConfig.isPrivateChat) return;
+    
+    console.log('初始化私聊功能，目标用户:', window.chatConfig.targetUser);
+    
+    // 设置事件监听器
+    setupPrivateEventListeners();
+    
+    // 初始化UI组件
+    renderPrivateEmojis();
+    
+    // 开始获取消息和状态
+    fetchPrivateMessages();
+    checkPrivateUserStatus();
+    
+    // 设置定时器
+    setInterval(fetchPrivateMessages, 2000);
+    setInterval(checkPrivateUserStatus, 5000);
+    
+    // 启动心跳
+    startHeartbeat();
+}
+
+// 设置私聊事件监听器
+function setupPrivateEventListeners() {
+    // 消息发送
+    const chatForm = document.getElementById('chat-form');
+    if (chatForm) {
+        chatForm.addEventListener('submit', sendPrivateMessage);
+    }
+    
+    // 输入框事件
+    const messageInput = document.getElementById('message');
+    if (messageInput) {
+        messageInput.addEventListener('input', handleTyping);
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (chatForm) {
+                    chatForm.dispatchEvent(new Event('submit'));
+                }
+            }
+        });
+        messageInput.focus();
+    }
+}
+
+// 渲染私聊表情面板
+function renderPrivateEmojis() {
+    if (!window.chatConfig || !window.chatConfig.isPrivateChat) return;
+    
+    const panel = document.getElementById('emoji-panel');
+    if (!panel) return;
+    
+    panel.innerHTML = '';
+    window.chatConfig.emojis.forEach(e => {
+        const div = document.createElement('div');
+        div.className = 'emoji-item';
+        div.textContent = e;
+        div.onclick = () => {
+            const messageInput = document.getElementById('message');
+            if (messageInput) {
+                messageInput.value += e;
+                panel.style.display = 'none';
+                messageInput.focus();
+            }
+        };
+        panel.appendChild(div);
+    });
+}
+
+// 获取私聊消息
+async function fetchPrivateMessages() {
+    if (!window.chatConfig || !window.chatConfig.isPrivateChat) return;
+    
+    try {
+        const res = await fetch(`api.php?action=get_private_messages&target_user=${encodeURIComponent(window.chatConfig.targetUser)}`);
+        const data = await res.json();
+        if (data.status === 'ok') {
+            renderPrivateMessages(data.messages);
+        }
+    } catch (e) {
+        console.error('获取私聊消息失败:', e);
+    }
+}
+
+// 渲染私聊消息
+// 渲染私聊消息（统一处理文件格式）
+function renderPrivateMessages(messages) {
+    const chatBox = document.getElementById('chat-box');
+    if (!chatBox) return;
+    
+    messages.forEach(msg => {
+        if (msg.id <= lastMessageId) return;
+        
+        const div = document.createElement('div');
+        const isMe = msg.sender === window.chatConfig.currentUser;
+        div.className = `message ${isMe ? 'me' : 'other'} ${msg.is_read === 0 && !isMe ? 'unread' : ''}`;
+        
+        const avatar = `https://api.dicebear.com/6.x/pixel-art/svg?seed=${encodeURIComponent(msg.sender)}`;
+        
+        let content = '';
+        let isImageMessage = false;
+
+        // 统一处理消息内容
+        if (msg.type === 'file') {
+            try {
+                // 解析JSON格式的文件信息
+                const fileInfo = JSON.parse(msg.message);
+                if (fileInfo.type === 'image') {
+                    isImageMessage = true;
+                    content = `<img src="uploads/${escapeHtml(fileInfo.saved_name)}" class="chat-img file-preview" alt="${escapeHtml(fileInfo.filename)}" onclick="previewImage(this)">`;
+                } else {
+                    content = `<a href="uploads/${escapeHtml(fileInfo.saved_name)}" target="_blank" class="chat-file">${escapeHtml(fileInfo.filename)}</a>`;
+                }
+            } catch (e) {
+                // 如果解析失败，可能是旧格式的直接路径
+                console.warn('文件信息解析失败，尝试旧格式:', e);
+                if (msg.message.includes('uploads/')) {
+                    // 假设是图片
+                    content = `<img src="${msg.message}" class="chat-img" onclick="previewImage(this)">`;
+                } else {
+                    content = `<a href="${msg.message}" target="_blank" class="chat-file">下载文件</a>`;
+                }
+            }
+        } else if (msg.type === 'image') {
+            // 处理旧的直接图片链接格式
+            content = `<img src="${msg.message}" class="chat-img" onclick="previewImage(this)">`;
+        } else {
+            // 普通文本消息
+            content = escapeHtml(msg.message).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+        }
+
+        const deleteBtn = isMe ? 
+            `<span class="delete-msg-btn" title="删除消息" onclick="deletePrivateMessage(${msg.id}, this)">🗑️</span>` : '';
+        
+        const time = formatMessageTime(msg.created_at);
+
+        div.innerHTML = `
+            <div class="bubble">
+                <div class="msg-header">
+                    <img src="${avatar}" class="message-avatar" alt="${escapeHtml(msg.sender)}">
+                    <span>${escapeHtml(msg.sender)}</span>
+                    ${deleteBtn}
+                </div>
+                <div class="message-content ${isImageMessage ? 'image-message' : ''}">
+                    ${content}
+                </div>
+                <div class="message-time">${time}</div>
+            </div>`;
+        
+        chatBox.appendChild(div);
+        lastMessageId = Math.max(lastMessageId, msg.id);
+    });
+    
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+// 发送私聊消息
+async function sendPrivateMessage(e) {
+    e.preventDefault();
+    
+    if (!window.chatConfig || !window.chatConfig.isPrivateChat) return;
+    
+    const msgInput = document.getElementById('message');
+    if (!msgInput) return;
+    
+    const msg = msgInput.value.trim();
+    if (!msg) return;
+    
+    const btn = document.querySelector('.send-btn');
+    const originalText = btn.textContent;
+    
+    setButtonLoading(btn, '发送中...');
+    
+    try {
+        const form = new URLSearchParams({
+            action: 'send_private_message',
+            receiver: window.chatConfig.targetUser,
+            message: msg,
+            type: 'text'
+        });
+        
+        const res = await fetch('api.php', {
+            method: 'POST',
+            body: form
+        });
+        
+        const data = await res.json();
+        if (data.status === 'ok') {
+            msgInput.value = '';
+            fetchPrivateMessages();
+            stopTyping();
+            showToast('消息发送成功', 'success');
+        } else {
+            showToast('发送失败: ' + (data.message || '未知错误'), 'error');
+        }
+    } catch (e) {
+        console.error('发送私聊消息失败:', e);
+        showToast('网络错误，发送失败', 'error');
+    }
+    
+    setButtonNormal(btn, originalText);
+}
+
+// 删除私聊消息
+async function deletePrivateMessage(messageId, btnElement) {
+    if (!confirm('确认删除这条消息吗？')) return;
+    
+    try {
+        const form = new URLSearchParams({
+            action: 'delete_private_message',
+            message_id: messageId
+        });
+        
+        const res = await fetch('api.php', {
+            method: 'POST',
+            body: form
+        });
+        
+        const data = await res.json();
+        if (data.status === 'ok') {
+            btnElement.closest('.message').remove();
+            showToast('消息已删除', 'success');
+        } else {
+            showToast('删除失败: ' + (data.message || '未知错误'), 'error');
+        }
+    } catch (e) {
+        console.error('删除私聊消息失败:', e);
+        showToast('网络错误，删除失败', 'error');
+    }
+}
+
+// 清空私聊历史
+async function deletePrivateChatHistory() {
+    if (!window.chatConfig || !window.chatConfig.isPrivateChat) return;
+    
+    try {
+        const form = new URLSearchParams({
+            action: 'delete_private_chat_history',
+            target_user: window.chatConfig.targetUser
+        });
+        
+        const res = await fetch('api.php', {
+            method: 'POST',
+            body: form
+        });
+        
+        const data = await res.json();
+        if (data.status === 'ok') {
+            document.getElementById('chat-box').innerHTML = '';
+            lastMessageId = 0;
+            showToast('聊天记录已删除', 'success');
+        } else {
+            showToast('删除失败: ' + (data.message || '未知错误'), 'error');
+        }
+    } catch (e) {
+        console.error('清空私聊历史失败:', e);
+        showToast('网络错误，删除失败', 'error');
+    }
+}
+
+// 检查私聊用户状态
+async function checkPrivateUserStatus() {
+    if (!window.chatConfig || !window.chatConfig.isPrivateChat) return;
+    
+    try {
+        const res = await fetch('api.php?action=get_users');
+        const data = await res.json();
+        
+        if (data.status === 'ok') {
+            const user = data.users.find(u => u.username === window.chatConfig.targetUser);
+            const statusElement = document.getElementById('user-status');
+            
+            if (user && statusElement) {
+                const online = user.online;
+                statusElement.textContent = online ? '🟢 在线' : '⚫ 离线';
+                statusElement.style.color = online ? '#27ae60' : '#95a5a6';
+                
+                document.title = online ? 
+                    `💬 与 ${window.chatConfig.targetUser} 私聊（在线）` :
+                    `💬 与 ${window.chatConfig.targetUser} 私聊（离线）`;
+            }
+        }
+    } catch (e) {
+        console.error('检查私聊用户状态失败:', e);
+    }
+}
+
+// ==================== 公共聊天功能 ====================
+
+// 用户状态调试函数
+function debugUserStatus(users) {
+    console.group('🐛 用户状态调试');
+    console.table(users.map(user => ({
+        用户名: user.username,
+        在线状态: user.online ? '🟢 在线' : '🔴 离线',
+        最后活动: user.last_active || '无记录',
+        角色: user.role
+    })));
+    console.groupEnd();
+}
+
+// 聊天室前端逻辑
 function startHeartbeat() {
     // 每30秒发送一次心跳
     heartbeatInterval = setInterval(async () => {
@@ -35,23 +335,27 @@ function stopHeartbeat() {
     }
 }
 
-// 在初始化时启动心跳
+// DOM加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
-    // ... 其他初始化代码 ...
+    // 检查是否在私聊页面
+    const isPrivatePage = document.querySelector('.private-chat-container') !== null;
+    
+    if (isPrivatePage) {
+        // 私聊页面有专门的初始化代码
+        console.log('检测到私聊页面，跳过公共聊天初始化');
+        return;
+    }
+    
+    console.log('初始化公共聊天功能');
+    
+    // 公共聊天页面初始化 - 只调用 initializeChat，setupEventListeners 已经在其中
+    initializeChat();
+    setupKeyboardShortcuts();
     startHeartbeat();
 });
 
 // 在页面卸载时停止心跳
 window.addEventListener('beforeunload', stopHeartbeat);
-
-// 初始化
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('初始化聊天室，用户:', username, '角色:', role);
-    
-    initializeChat();
-    setupEventListeners();
-    setupKeyboardShortcuts();
-});
 
 // 初始化聊天室
 function initializeChat() {
@@ -59,6 +363,9 @@ function initializeChat() {
     fetchUserInfo();
     fetchMessages();
     fetchUsers();
+    
+    // 设置事件监听器 - 确保只在这里调用
+    setupEventListeners();
     
     // 设置定时刷新
     setInterval(fetchMessages, 3000);
@@ -81,15 +388,26 @@ function initializeChat() {
 
 // 设置事件监听器
 function setupEventListeners() {
-    // 消息发送
+    // 消息发送表单
     const chatForm = document.getElementById('chat-form');
-    if (chatForm) {
-        chatForm.addEventListener('submit', sendMessage);
+    if (chatForm && !chatForm.hasAttribute('data-listener-added')) {
+        chatForm.setAttribute('data-listener-added', 'true');
+        chatForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // 根据页面类型调用不同的发送函数
+            if (window.chatConfig && window.chatConfig.isPrivateChat) {
+                sendPrivateMessage(e);
+            } else {
+                sendMessage(e);
+            }
+        });
     }
     
     // 退出登录
     const logoutIcon = document.getElementById('logout-icon');
-    if (logoutIcon) {
+    if (logoutIcon && !logoutIcon.hasAttribute('data-listener-added')) {
+        logoutIcon.setAttribute('data-listener-added', 'true');
         logoutIcon.addEventListener('click', logout);
     }
     
@@ -98,20 +416,24 @@ function setupEventListeners() {
         setupAdminFeatures();
     }
     
-    // 表情点击
-    document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('emoji')) {
-            const messageInput = document.getElementById('message');
-            if (messageInput) {
-                messageInput.value += e.target.textContent;
-                messageInput.focus();
+    // 表情点击 - 使用事件委托，不需要重复绑定
+    if (!document.hasAttribute('data-emoji-listener-added')) {
+        document.setAttribute('data-emoji-listener-added', 'true');
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('emoji')) {
+                const messageInput = document.getElementById('message');
+                if (messageInput) {
+                    messageInput.value += e.target.textContent;
+                    messageInput.focus();
+                }
             }
-        }
-    });
+        });
+    }
     
     // 输入框按键事件
     const messageInput = document.getElementById('message');
-    if (messageInput) {
+    if (messageInput && !messageInput.hasAttribute('data-listener-added')) {
+        messageInput.setAttribute('data-listener-added', 'true');
         messageInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -196,7 +518,6 @@ function setupKeyboardShortcuts() {
     });
 }
 
-
 // 渲染表情
 function renderEmojis() {
     const emojiPanel = document.getElementById('emoji-panel');
@@ -226,8 +547,6 @@ async function fetchUserInfo() {
         console.error('获取用户信息失败:', error);
     }
 }
-
-
 
 // 获取消息
 async function fetchMessages() {
@@ -340,8 +659,8 @@ async function deleteMessage(messageId, el) {
     }
 }
 
-
 // 发送消息
+// 发送消息（公共聊天）
 async function sendMessage(e) {
     e.preventDefault();
     const msgInput = document.getElementById('message');
@@ -371,7 +690,7 @@ async function sendMessage(e) {
             
             if (data.status === 'ok') {
                 msgInput.value = '';
-                fetchMessages();
+                fetchMessages(); // 重新获取消息更新界面
                 showToast('消息发送成功', 'success');
             } else {
                 showToast('发送失败: ' + (data.message || '未知错误'), 'error');
@@ -401,9 +720,6 @@ async function fetchUsers() {
         if (!container) return;
         
         if (data.status === 'ok') {
-      // 调试输出
-            // debugUserStatus(data.users);
-      
             container.innerHTML = '';
             data.users.forEach(u => {
                 const userElement = createUserElement(u);
@@ -831,7 +1147,18 @@ async function deleteUser() {
     }
 }
 
-// 工具函数
+// ==================== 工具函数 ====================
+
+function handleTyping() {
+    if (!isTyping) isTyping = true;
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(stopTyping, 1000);
+}
+
+function stopTyping() {
+    isTyping = false;
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -978,6 +1305,165 @@ function addTimeSeparators() {
         }
     });
 }
+
+// 图片处理
+function createMessageElement(msg) {
+    const div = document.createElement('div');
+    div.className = `message ${msg.username === username ? 'me' : 'other'}`;
+    div.dataset.messageId = msg.id;
+    div.dataset.timestamp = new Date(msg.created_at).getTime();
+
+    const avatarUrl = `https://api.dicebear.com/6.x/pixel-art/svg?seed=${encodeURIComponent(msg.username)}`;
+    let content = '';
+    let isImageMessage = false; // ✅ 用来标记是否是图片消息
+
+    // 处理消息类型
+    if (msg.type === 'file') {
+        try {
+            const fileInfo = JSON.parse(msg.message);
+            if (fileInfo.type === 'image') {
+                isImageMessage = true;
+                content = `<img src="uploads/${escapeHtml(fileInfo.saved_name)}" class="chat-img file-preview" alt="${escapeHtml(fileInfo.filename)}" onclick="previewImage(this)">`;
+            } else {
+                content = `<a href="uploads/${escapeHtml(fileInfo.saved_name)}" target="_blank" class="chat-file">${escapeHtml(fileInfo.filename)}</a>`;
+            }
+        } catch (e) {
+            console.error('解析文件消息失败', e);
+            content = escapeHtml(msg.message);
+        }
+    } else {
+        content = escapeHtml(msg.message).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    }
+
+    const time = formatMessageTime(msg.created_at);
+    let deleteBtn = '';
+    if(msg.username === username){
+        deleteBtn = `<span class="delete-msg-btn" title="删除消息" onclick="deleteMessage(${msg.id}, this)">🗑️</span>`;
+    }
+
+    div.innerHTML = `
+    <div class="bubble">
+        <div class="msg-header">
+            <img src="${avatarUrl}" class="message-avatar" alt="${escapeHtml(msg.username)}">
+            <span>${escapeHtml(msg.username)}</span>
+            ${deleteBtn}
+        </div>
+        <div class="message-content ${isImageMessage ? 'image-message' : ''}">
+            ${content}
+        </div>
+        <div class="message-time">${time}</div>
+    </div>
+    `;
+
+    return div;
+}
+
+// 点击图片放大查看
+function previewImage(imgElement) {
+    const src = imgElement.src;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'image-modal-overlay';
+
+    const modalImg = document.createElement('img');
+    modalImg.src = src;
+    overlay.appendChild(modalImg);
+
+    overlay.addEventListener('click', () => overlay.remove());
+
+    document.body.appendChild(overlay);
+}
+
+// 文本文件点击处理
+document.addEventListener('click', function(e) {
+    const target = e.target;
+    if (target.tagName === 'A' && target.classList.contains('chat-file')) {
+        const href = target.getAttribute('href');
+        const ext = href.split('.').pop().toLowerCase();
+        if (ext === 'txt') {
+            e.preventDefault();
+            fetch(href)
+                .then(res => res.text())
+                .then(text => {
+                    // 创建 Blob 对象
+                    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+
+                    // 弹窗背景遮罩
+                    const modalBackground = document.createElement('div');
+                    modalBackground.style.cssText = `
+                        position: fixed;
+                        top:0; left:0; width:100%; height:100%;
+                        background: rgba(0,0,0,0.5);
+                        z-index: 9999;
+                    `;
+                    modalBackground.addEventListener('click', () => {
+                        overlay.remove();
+                        modalBackground.remove();
+                        URL.revokeObjectURL(url);
+                    });
+
+                    // 弹窗容器
+                    const overlay = document.createElement('div');
+                    overlay.style.cssText = `
+                        position: fixed;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        background: #fff;
+                        border-radius: 8px;
+                        padding: 20px;
+                        z-index: 10000;
+                        box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                        width: 90%;
+                        height: 80%;
+                        max-width: 900px;
+                        max-height: 90%;
+                        overflow: auto;
+                    `;
+
+                    // 文本显示区
+                    const pre = document.createElement('pre');
+                    pre.textContent = text;
+                    pre.style.whiteSpace = 'pre-wrap';
+                    pre.style.wordBreak = 'break-word';
+                    pre.style.fontSize = '16px';
+                    overlay.appendChild(pre);
+
+                    // 下载按钮
+                    const downloadBtn = document.createElement('button');
+                    downloadBtn.textContent = '下载文本';
+                    downloadBtn.style.cssText = `
+                        position: fixed;
+                        top: 10px;
+                        right: 10px;
+                        padding: 6px 12px;
+                        background: #3498db;
+                        color: #fff;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        z-index: 10001;
+                    `;
+                    downloadBtn.addEventListener('click', () => {
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = href.split('/').pop();
+                        a.click();
+                    });
+                    overlay.appendChild(downloadBtn);
+
+                    document.body.appendChild(modalBackground);
+                    document.body.appendChild(overlay);
+                })
+                .catch(err => {
+                    console.error('读取文本文件失败:', err);
+                    alert('无法打开文本文件');
+                });
+        }
+    }
+});
+
 
 // 添加缺失的CSS选择器支持
 if (!Element.prototype.matches) {
