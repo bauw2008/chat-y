@@ -1,0 +1,132 @@
+/* 登录容器 */
+.login-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: url('https://raw.githubusercontent.com/bauw2008/bauw/refs/heads/main/Pictures/login.webp') no-repeat center center;
+    background-size: cover;
+}
+
+.login-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+}
+
+/* 登录框 */
+.login-box {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    padding: 1.2rem;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 280px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    position: relative;
+}
+
+/* 标题 */
+.login-title {
+    text-align: center;
+    margin-bottom: 1rem;
+    color: #fff;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+/* 表单 */
+#loginForm, #regForm {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+/* 输入框 */
+#loginForm input, #regForm input {
+    padding: 0.7rem;
+    width: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    box-sizing: border-box;
+}
+
+#loginForm input:focus, #regForm input:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.25);
+}
+
+#loginForm input::placeholder, #regForm input::placeholder {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* 错误提示 */
+.error-message {
+    color: #ff6b6b;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+/* 按钮 */
+.login-btn {
+    padding: 0.7rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-size: 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+}
+
+.register-btn {
+    background: rgba(86, 171, 47, 0.4);
+}
+
+/* 模态框 */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    padding: 1rem;
+}
+
+.modal-content {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    padding: 1.2rem;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 280px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    position: relative;
+}
+
+.close-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.7rem;
+    font-size: 1.4rem;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.8);
+    background: none;
+    border: none;
+}
+

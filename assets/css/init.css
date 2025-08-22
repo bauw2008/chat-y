@@ -1,0 +1,210 @@
+@import url('main.css');
+
+.init-container {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+    padding: 20px;
+}
+
+.init-box {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    width: 100%;
+    max-width: 500px;
+    overflow: hidden;
+    animation: fadeIn 0.5s ease;
+}
+
+.init-header {
+    background: #4a6bdf;
+    color: white;
+    padding: 25px;
+    text-align: center;
+}
+
+.init-title {
+    font-size: 24px;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.init-subtitle {
+    font-size: 14px;
+    opacity: 0.9;
+}
+
+.init-content {
+    padding: 30px;
+}
+
+.status-box {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 25px;
+    text-align: center;
+}
+
+.status-icon {
+    font-size: 48px;
+    margin-bottom: 15px;
+    display: block;
+}
+
+.status-success {
+    color: #28a745;
+}
+
+.status-info {
+    color: #17a2b8;
+}
+
+.status-error {
+    color: #e74c3c;
+}
+
+.status-message {
+    font-size: 16px;
+    margin-bottom: 10px;
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.status-details {
+    font-size: 14px;
+    color: #6c757d;
+    margin-top: 5px;
+}
+
+.progress-container {
+    margin: 20px 0;
+    background: #e9ecef;
+    border-radius: 5px;
+    height: 10px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    border-radius: 5px;
+    background: #4a6bdf;
+    width: 0%;
+    transition: width 0.5s ease;
+    background: linear-gradient(90deg, #4a6bdf, #6c8eff);
+}
+
+.action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.action-btn {
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    text-align: center;
+    cursor: pointer;
+    border: none;
+}
+
+.btn-primary {
+    background: #4a6bdf;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #3a5bc9;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.btn-primary:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.btn-secondary {
+    background: #f8f9fa;
+    color: #495057;
+    border: 1px solid #dee2e6;
+}
+
+.btn-secondary:hover {
+    background: #e9ecef;
+    transform: translateY(-2px);
+}
+
+.admin-info {
+    background: #e8f4fd;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 20px;
+    font-size: 14px;
+    border-left: 4px solid #17a2b8;
+}
+
+.admin-title {
+    color: #17a2b8;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.admin-info p {
+    margin-bottom: 5px;
+    color: #2c3e50;
+}
+
+.code {
+    font-family: 'Courier New', monospace;
+    background: #f1f3f5;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    border: 1px solid #dee2e6;
+}
+
+.init-footer {
+    text-align: center;
+    padding: 20px;
+    color: #6c757d;
+    font-size: 14px;
+    border-top: 1px solid #dee2e6;
+    background: #f8f9fa;
+}
+
+/* 响应式设计 */
+@media (max-width: 576px) {
+    .init-container {
+        padding: 10px;
+    }
+    
+    .init-box {
+        border-radius: 10px;
+    }
+    
+    .init-header {
+        padding: 20px;
+    }
+    
+    .init-content {
+        padding: 20px;
+    }
+    
+    .init-title {
+        font-size: 20px;
+    }
+    
+    .action-btn {
+        padding: 10px 16px;
+        font-size: 14px;
+    }
+}
