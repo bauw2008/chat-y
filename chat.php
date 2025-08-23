@@ -36,6 +36,30 @@ if (!isset($_SESSION['username'])) {
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? 'user';
 
+
+// 获取共享文件列表
+$sharedFiles = [];
+try {
+    $stmt = $db->prepare("SELECT id, username, message, created_at FROM messages WHERE type='file' ORDER BY created_at DESC");
+    $stmt->execute();
+    $files = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    foreach ($files as $f) {
+        $msgData = json_decode($f['message'], true);
+        if ($msgData && isset($msgData['filename'], $msgData['saved_name'])) {
+            $sharedFiles[] = [
+                'id' => $f['id'],
+                'username' => $f['username'],
+                'filename' => $msgData['filename'],
+                'saved_name' => $msgData['saved_name'],
+                'created_at' => $f['created_at']
+            ];
+        }
+    }
+} catch (Exception $e) {
+    $sharedFiles = [];
+}
+
 // 更新最后活动时间
 $db = new PDO("sqlite:$dbFile");
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -64,11 +88,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
     
     if (in_array($file['type'], $allowedTypes) && $file['size'] <= $maxFileSize) {
         if (move_uploaded_file($file['tmp_name'], $filePath)) {
+            // 使用上海时间
+            date_default_timezone_set('Asia/Shanghai');
+            $currentTime = date('Y-m-d H:i:s');
+            
             // 保存文件信息到数据库
             $fileExt = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
             $fileType = in_array($fileExt, ['jpg', 'jpeg', 'png', 'gif']) ? 'image' : 'file';
             
-            $stmt = $db->prepare("INSERT INTO messages (username, message, type) VALUES (:u, :m, :t)");
+            $stmt = $db->prepare("INSERT INTO messages (username, message, type, created_at) VALUES (:u, :m, :t, :time)");
             $stmt->execute([
                 ':u' => $username,
                 ':m' => json_encode([
@@ -76,7 +104,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                     'saved_name' => $fileName,
                     'type' => $fileType
                 ]),
-                ':t' => 'file'
+                ':t' => 'file',
+                ':time' => $currentTime  // 使用上海时间
             ]);
             
             // 重定向以避免重复提交
@@ -86,6 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -123,9 +153,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                         <button class="profile-btn" onclick="toggleAdminPanel()">
                             <i>⚙️</i> 管理功能
                         </button>
-                    <?php endif; ?>
+					<?php endif; ?>
+					
+					<button class="profile-btn" onclick="openSharedFiles()">
+							<i>📂</i> 共享文件
+					</button>
+					
+					<button class="profile-btn" onclick="toggleChangePasswordMenu()">
+						    <i>🔑</i> 修改密码
+					</button>
+	
                     <button class="profile-btn logout" onclick="logout()">
-                        <i>🔓</i> 退出登录
+                            <i>🔓</i> 退出登录
                     </button>
                 </div>
                 
@@ -141,7 +180,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                 </div>
                 <?php endif; ?>
             </div>
-            
+			
+			<!-- 共享文件对话框 -->
+			<div class="dialog-overlay" id="shared-files-dialog">
+				<div class="dialog-box">
+					<div class="dialog-header">
+						共享文件
+						<button class="dialog-close" onclick="closeSharedFiles()">×</button>
+					</div>
+					<div class="dialog-content">
+						<ul id="shared-files-list">
+							<li>暂无共享文件</li>
+						</ul>
+					</div>
+				</div>
+			</div>
+
+			<!-- 修改密码弹窗 -->
+			<div id="change-password-menu" class="dropdown-menu" style="display: none;">
+				<form id="change-password-form">
+					<input type="password" id="old-password" name="old_password" placeholder="旧密码" required autocomplete="current-password"><br>
+					<input type="password" id="new-password" name="new_password" placeholder="新密码" required autocomplete="new-password"><br>
+					<input type="password" id="confirm-password" name="confirm_password" placeholder="确认新密码" required autocomplete="new-password"><br>
+					<button type="submit">提交修改</button>
+				</form>
+			</div>
+
+
             <!-- 在线用户列表 -->
             <div class="online-users">
                 <h4>在线用户</h4>
@@ -173,6 +238,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                         <span class="toolbar-icon">😊</span>
                         <span class="toolbar-label">表情</span>
                     </button>
+					
+					<button type="button" class="toolbar-btn" onclick="toggleStickerPanel()" title="贴纸">
+						<span class="toolbar-icon">🖼️</span>
+						<span class="toolbar-label">贴纸</span>
+					</button>
+
                     
                     <!-- 可以在这里添加更多工具栏按钮 -->
                     <button type="button" class="toolbar-btn" onclick="showMoreTools()" title="更多工具">
@@ -185,6 +256,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                 <div id="emoji-panel" class="emoji-panel">
                     <!-- Emoji通过JavaScript动态加载 -->
                 </div>
+				
+				<!-- 贴纸面板 -->
+				<div id="sticker-panel" class="emoji-panel"
+					<!-- 贴纸图片通过JavaScript动态加载 -->
+				</div>
+
             </div>
             
             <!-- 输入区域 -->
@@ -226,12 +303,6 @@ function toggleAdminPanel() {
     }
 }
 
-// 切换Emoji面板
-function toggleEmojiPanel() {
-    const emojiPanel = document.getElementById('emoji-panel');
-    emojiPanel.style.display = emojiPanel.style.display === 'grid' ? 'none' : 'grid';
-}
-
 // 显示更多工具
 function showMoreTools() {
     alert('更多工具功能待开发');
@@ -247,28 +318,6 @@ document.getElementById('file-input').addEventListener('change', function() {
 // 点击遮罩层关闭菜单
 document.querySelector('.side-menu-overlay').addEventListener('click', closeSideMenu);
 
-// 初始化一些示例emoji
-document.addEventListener('DOMContentLoaded', function() {
-    const emojiPanel = document.getElementById('emoji-panel');
-    const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳'];
-    
-    emojis.forEach(emoji => {
-        const emojiElement = document.createElement('div');
-        emojiElement.className = 'emoji-item';
-        emojiElement.textContent = emoji;
-        emojiElement.addEventListener('click', function() {
-            document.getElementById('message').value += emoji;
-            document.getElementById('emoji-panel').style.display = 'none';
-        });
-        emojiPanel.appendChild(emojiElement);
-    });
-    
-    // 滚动到聊天底部
-    const chatBox = document.getElementById('chat-box');
-    if (chatBox) {
-        chatBox.scrollTop = chatBox.scrollHeight;
-    }
-});
 </script>
 
 <script src="assets/js/chat.js"></script>

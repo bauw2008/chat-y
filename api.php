@@ -1,5 +1,5 @@
 <?php
-// api.php - 统一API接口（上海时间版本）
+// api.php
 header('Content-Type: application/json; charset=utf-8');
 error_reporting(0);
 ini_set('display_errors', 0);
@@ -16,9 +16,26 @@ function json_response($data, $code = 200) {
     exit;
 }
 
-// 获取上海时间的辅助函数
+// 获取上海时间
 function getShanghaiTime() {
     return date('Y-m-d H:i:s');
+}
+
+// 格式化相对时间
+function formatRelativeTime($timestamp) {
+    $now = time();
+    $time = strtotime($timestamp);
+    $diff = $now - $time;
+    $minutes = floor($diff / 60);
+    $hours = floor($diff / 3600);
+    $days = floor($diff / 86400);
+    
+    if ($minutes < 1) return '刚刚';
+    if ($minutes < 60) return "{$minutes}分钟前";
+    if ($hours < 24) return "{$hours}小时前";
+    if ($days < 7) return "{$days}天前";
+    
+    return date('Y-m-d H:i', $time);
 }
 
 // 数据库连接
@@ -45,9 +62,9 @@ try {
             $_SESSION['username'] = $user['username'];
             $_SESSION['role'] = $user['role'] ?? 'user';
 
-            // 更新 last_active - 使用上海时间
+            // 更新 last_active - 使用上海时间，并设置在线状态
             $currentTime = getShanghaiTime();
-            $stmt = $db->prepare("UPDATE users SET last_active=:time WHERE username=:u");
+            $stmt = $db->prepare("UPDATE users SET last_active=:time, is_online=1 WHERE username=:u");
             $stmt->execute([':time'=>$currentTime, ':u'=>$user['username']]);
 
             json_response(['status'=>'ok','message'=>'登录成功','redirect'=>'chat.php']);
@@ -73,7 +90,7 @@ try {
 
         $hash = password_hash($password,PASSWORD_DEFAULT);
         $currentTime = getShanghaiTime();
-        $stmt = $db->prepare("INSERT INTO users (username,password,role,last_active) VALUES (:u,:p,'user',:time)");
+        $stmt = $db->prepare("INSERT INTO users (username,password,role,last_active,is_online) VALUES (:u,:p,'user',:time,1)");
         $stmt->execute([':u'=>$username,':p'=>$hash,':time'=>$currentTime]);
 
         json_response(['status'=>'ok','message'=>'注册成功，请登录']);
@@ -82,7 +99,7 @@ try {
     // 发送消息
     elseif ($action==='send_message') {
         if (!isset($_SESSION['username'])) {
-            json_response(['status'=>'error','message'=>'未登录'],401);
+            json_response(['status'=>'极速','message'=>'未登录'],401);
         }
         $message = trim($_POST['message'] ?? '');
         if ($message==='') {
@@ -94,8 +111,8 @@ try {
         $stmt = $db->prepare("INSERT INTO messages (username,message,type,created_at) VALUES (:u,:m,'text',:time)");
         $stmt->execute([':u'=>$_SESSION['username'],':m'=>$message,':time'=>$currentTime]);
 
-        // 更新 last_active - 使用上海时间
-        $updateStmt = $db->prepare("UPDATE users SET last_active = :time WHERE username = :u");
+        // 更新 last_active 和在线状态 - 使用上海时间
+        $updateStmt = $db->prepare("UPDATE users SET last_active = :time, is_online = 1 WHERE username = :u");
         $updateStmt->execute([':time' => $currentTime, ':u' => $_SESSION['username']]);
 
         json_response(['status'=>'ok','message'=>'发送成功']);
@@ -113,37 +130,71 @@ try {
         json_response(['status'=>'ok','messages'=>$msgs]);
     }
 
-    // 获取在线用户
-    elseif ($action==='get_users') {
-        $stmt = $db->prepare("SELECT username, role, last_active FROM users ORDER BY username ASC");
-        $stmt->execute();
-        $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+	// 获取在线用户 - 修复版
+	elseif ($action==='get_users') {
+		// 首先清理长时间未活动的用户（标记为离线）
+		$cleanupStmt = $db->prepare("UPDATE users SET is_online = 0 WHERE datetime(last_active) < datetime('now', '-5 minutes')");
+		$cleanupStmt->execute();
+		
+		$stmt = $db->prepare("SELECT username, role, last_active, is_online FROM users ORDER BY is_online DESC, username ASC");
+		$stmt->execute();
+		$users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // 使用PHP的当前时间（已设置为上海时区）
-        $now = time();
+		// 使用数据库时间进行更准确的计算
+		$timeStmt = $db->prepare("SELECT datetime('now') as current_db_time");
+		$timeStmt->execute();
+		$dbTime = $timeStmt->fetch(PDO::FETCH_ASSOC)['current_db_time'];
+		$now = strtotime($dbTime);
 
-        foreach ($users as &$u) {
-            if ($u['last_active']) {
-                $lastActive = strtotime($u['last_active']);
-                $u['online'] = ($now - $lastActive) < 300; // 5分钟内活跃算在线
-            } else {
-                $u['online'] = false;
-            }
-        }
+		foreach ($users as &$u) {
+			// 双重检查：优先使用 is_online 字段，其次使用时间计算
+			if ($u['is_online'] == 1) {
+				$u['online'] = true;
+				$u['status_source'] = '实时状态';
+			} else {
+				// 如果 is_online 为 0，但最近有活动，也标记为在线（容错机制）
+				if ($u['last_active']) {
+					$lastActive = strtotime($u['last_active']);
+					$u['online'] = ($now - $lastActive) < 300; // 5分钟内活跃算在线
+					$u['status_source'] = $u['online'] ? '时间计算' : '离线';
+				} else {
+					$u['online'] = false;
+					$u['status_source'] = '无活动记录';
+				}
+			}
+			
+			// 添加最后活动时间的友好显示
+			if ($u['last_active']) {
+				$u['last_active_friendly'] = formatRelativeTime($u['last_active']);
+			} else {
+				$u['last_active_friendly'] = '从未活动';
+			}
+		}
 
-        json_response(['status'=>'ok','users'=>$users]);
-    }
+		json_response(['status'=>'ok','users'=>$users, 'server_time' => $dbTime]);
+	}
 
     // 获取当前用户信息
     elseif ($action === 'get_user_info') {
         if (isset($_SESSION['username'])) {
-            json_response([
-                'status' => 'ok',
-                'user' => [
-                    'username' => $_SESSION['username'],
-                    'role' => $_SESSION['role'] ?? 'user'
-                ]
-            ]);
+            // 获取更详细的用户信息
+            $stmt = $db->prepare("SELECT username, role, last_active, is_online FROM users WHERE username = :u");
+            $stmt->execute([':u' => $_SESSION['username']]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($user) {
+                json_response([
+                    'status' => '极速',
+                    'user' => [
+                        'username' => $user['username'],
+                        'role' => $user['role'],
+                        'is_online' => (bool)$user['is_online'],
+                        'last_active' => $user['last_active']
+                    ]
+                ]);
+            } else {
+                json_response(['status'=>'error','message'=>'用户不存在'],404);
+            }
         } else {
             json_response(['status'=>'error','message'=>'未登录'],401);
         }
@@ -156,13 +207,13 @@ try {
         }
 
         $db->exec("DELETE FROM messages");
-        json_response(['status'=>'ok','message'=>'聊天记录已清理']);
+        json_response(['极速'=>'ok','message'=>'聊天记录已清理']);
     }
 
     // 获取可删除用户列表
     elseif ($action === 'get_deletable_users') {
-        if (!isset($_SESSION['username']) || ($_SESSION['role'] ?? '') !== 'admin') {
-            json_response(['status'=>'error','message'=>'无权限'],403);
+        if (!isset($_SESSION['username']) || ($极速['role'] ?? '') !== 'admin') {
+            json_response(['status'=>'error','message'=>'极速'],403);
         }
 
         $stmt = $db->prepare("SELECT username FROM users WHERE role != 'admin' ORDER BY username ASC");
@@ -183,7 +234,7 @@ try {
             json_response(['status'=>'error','message'=>'无法删除该用户'],400);
         }
 
-        $stmt = $db->prepare("DELETE FROM users WHERE username=:u AND role!='admin'");
+        $stmt = $db极速prepare("DELETE FROM users WHERE username=:u AND role!='admin'");
         $stmt->execute([':u'=>$usernameToDelete]);
 
         json_response(['status'=>'ok','message'=>"用户 $usernameToDelete 已删除"]);
@@ -382,18 +433,22 @@ try {
         json_response(['status'=>'ok','message'=>'消息已删除']);
     }
 
-    // 心跳动作
+    // 心跳动作 - 增强版
     elseif ($action === 'heartbeat') {
         if (!isset($_SESSION['username'])) {
             json_response(['status'=>'error','message'=>'未登录'],401);
         }
         
-        // 更新最后活动时间 - 使用上海时间
+        // 更新最后活动时间和在线状态 - 使用上海时间
         $currentTime = getShanghaiTime();
-        $stmt = $db->prepare("UPDATE users SET last_active = :time WHERE username = :u");
+        $stmt = $db->prepare("UPDATE users SET last_active = :time, is_online = 1 WHERE username = :u");
         $stmt->execute([':time' => $currentTime, ':u' => $_SESSION['username']]);
         
-        json_response(['status'=>'ok','message'=>'心跳更新成功']);
+        // 清理长时间未活动的用户
+        $cleanupStmt = $db->prepare("UPDATE users SET is_online = 0 WHERE datetime(last_active) < datetime('now', '-5 minutes')");
+        $cleanupStmt->execute();
+        
+        json_response(['status'=>'ok','message'=>'心跳更新成功', 'users_updated' => true]);
     }
 
     // 时间检查动作
@@ -410,9 +465,87 @@ try {
             'server_timezone'=>date_default_timezone_get()
         ]);
     }
+	
+	// 管理员删除消息（包括文件）
+	elseif ($action === 'delete_message_admin') {
+		// 检查登录与管理员身份
+		if (!isset($_SESSION['username']) || ($_SESSION['role'] ?? '') !== 'admin') {
+			json_response(['status'=>'error','message'=>'无权限'],403);
+		}
 
-    // 退出登录
+		// 获取消息ID（支持POST或GET）
+		$messageId = intval($_POST['message_id'] ?? $_GET['id'] ?? 0);
+		if ($messageId <= 0) {
+			json_response(['status'=>'error','message'=>'无效的消息ID'],400);
+		}
+
+		// 查询消息
+		$stmt = $db->prepare("SELECT * FROM messages WHERE id = :id");
+		$stmt->execute([':id' => $messageId]);
+		$message = $stmt->fetch(PDO::FETCH_ASSOC);
+
+		if (!$message) {
+			json_response(['status'=>'error','message'=>'消息不存在'],404);
+		}
+
+		// 如果是文件类型，删除服务器文件
+		if ($message['type'] === 'file') {
+			$msgData = json_decode($message['message'], true);
+			if (isset($msgData['saved_name'])) {
+				$filePath = __DIR__ . '/uploads/' . $msgData['saved_name'];
+				if (file_exists($filePath)) unlink($filePath);
+			}
+		}
+
+		// 删除数据库记录
+		$stmt = $db->prepare("DELETE FROM messages WHERE id = :id");
+		$stmt->execute([':id' => $messageId]);
+
+		json_response(['status'=>'ok','message'=>'消息已删除']);
+	}
+	
+	// 修改密码接口
+	elseif ($action === 'change_password') {
+		session_start();
+		if (!isset($_SESSION['username'])) {
+			json_response(['status'=>'error','message'=>'未登录'], 401);
+		}
+
+		$oldPassword = $_POST['old_password'] ?? '';
+		$newPassword = $_POST['new_password'] ?? '';
+
+		if (empty($oldPassword) || empty($newPassword)) {
+			json_response(['status'=>'error','message'=>'密码不能为空'], 400);
+		}
+
+		$username = $_SESSION['username'];
+
+		$stmt = $db->prepare("SELECT password FROM users WHERE username = :username");
+		$stmt->execute([':username' => $username]);
+		$user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+		if (!$user) json_response(['status'=>'error','message'=>'用户不存在'], 404);
+
+		if (!password_verify($oldPassword, $user['password'])) {
+			json_response(['status'=>'error','message'=>'旧密码错误'], 403);
+		}
+
+		$newHash = password_hash($newPassword, PASSWORD_DEFAULT);
+		$stmt = $db->prepare("UPDATE users SET password = :password WHERE username = :username");
+		$stmt->execute([':password' => $newHash, ':username' => $username]);
+
+		json_response(['status'=>'ok','message'=>'密码修改成功']);
+	}
+
+
+    // 退出登录 - 增强版
     elseif ($action==='logout') {
+        if (isset($_SESSION['username'])) {
+            // 将用户标记为离线
+            $stmt = $db->prepare("UPDATE users SET is_online = 0 WHERE username = :u");
+            $stmt->execute([':u' => $_SESSION['username']]);
+        }
+        
         session_destroy();
         json_response(['status'=>'ok','message'=>'已登出']);
     }

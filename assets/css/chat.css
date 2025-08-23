@@ -22,7 +22,7 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
-  background: white;
+  background: transparent !important; /* 移除白色背景 */
   border-radius: 16px;
   margin: 15px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
@@ -210,26 +210,29 @@ body {
 
 /* 聊天区域 */
 .chat-area {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  background: #f8fafc;
-  position: relative;
+  flex: 1;
+  background: transparent !important; /* 移除白色背景 */
+  border-radius: 0 0 12px 12px;
+  overflow: hidden;
 }
 
-/* 聊天内容区域背景 */
+/* 玻璃效果背景 */
 .chat-box {
+  position: relative;
   flex: 1;
   padding: 20px;
   overflow-y: auto;
-  background-image:
-    radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.7) 0%, transparent 20%),
-    radial-gradient(circle at 90% 80%, rgba(235, 245, 255, 0.5) 0%, transparent 20%);
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   gap: 15px;
-  position: relative;
+  z-index: 1;
+  isolation: isolate;
 }
+
+
 
 /* 聊天气泡样式 - 统一版本 */
 .message {
@@ -257,6 +260,10 @@ body {
   border-radius: 20px;
   margin: 8px 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  /* 添加基础玻璃效果 */
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .message.other .message-content {
@@ -271,54 +278,54 @@ body {
   color: white;
 }
 
-/* 七彩气泡颜色循环 - 他人消息 */
+/* 七彩气泡颜色循环 - 他人消息 - 增强色彩饱和度 */
 .message.other:nth-child(6n+1) .message-content {
-  background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
+  background: linear-gradient(135deg, rgba(255,154,158,0.7) 0%, rgba(250,208,196,0.7) 100%);
 }
 
 .message.other:nth-child(6n+2) .message-content {
-  background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+  background: linear-gradient(135deg, rgba(161,196,253,0.7) 0%, rgba(194,233,251,0.7) 100%);
 }
 
 .message.other:nth-child(6n+3) .message-content {
-  background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+  background: linear-gradient(135deg, rgba(132,250,176,0.7) 0%, rgba(143,211,244,0.7) 100%);
 }
 
 .message.other:nth-child(6n+4) .message-content {
-  background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+  background: linear-gradient(135deg, rgba(255,236,210,0.7) 0%, rgba(252,182,159,0.7) 100%);
 }
 
 .message.other:nth-child(6n+5) .message-content {
-  background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%);
+  background: linear-gradient(135deg, rgba(212,252,121,0.7) 0%, rgba(150,230,161,0.7) 100%);
 }
 
 .message.other:nth-child(6n+6) .message-content {
-  background: linear-gradient(135deg, #a6c0fe 0%, #f68084 100%);
+  background: linear-gradient(135deg, rgba(166,192,254,0.7) 0%, rgba(246,128,132,0.7) 100%);
 }
 
-/* 多彩气泡颜色循环 - 自己消息 */
+/* 多彩气泡颜色循环 - 自己消息 - 增强色彩饱和度 */
 .message.me:nth-child(6n+1) .message-content {
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  background: linear-gradient(135deg, rgba(52,152,219,0.7) 0%, rgba(41,128,185,0.7) 100%);
 }
 
 .message.me:nth-child(6n+2) .message-content {
-  background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+  background: linear-gradient(135deg, rgba(46,204,113,0.7) 0%, rgba(39,174,96,0.7) 100%);
 }
 
 .message.me:nth-child(6n+3) .message-content {
-  background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+  background: linear-gradient(135deg, rgba(155,89,182,0.7) 0%, rgba(142,68,173,0.7) 100%);
 }
 
 .message.me:nth-child(6n+4) .message-content {
-  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  background: linear-gradient(135deg, rgba(231,76,60,0.7) 0%, rgba(192,57,43,0.7) 100%);
 }
 
 .message.me:nth-child(6n+5) .message-content {
-  background: linear-gradient(135deg, #f39c12 0%, #d35400 100%);
+  background: linear-gradient(135deg, rgba(243,156,18,0.7) 0%, rgba(211,84,0,0.7) 100%);
 }
 
 .message.me:nth-child(6n+6) .message-content {
-  background: linear-gradient(135deg, #1abc9c 0%, #16a085 100%);
+  background: linear-gradient(135deg, rgba(26,188,156,0.7) 0%, rgba(22,160,133,0.7) 100%);
 }
 
 /* 调整头像样式 */
@@ -491,6 +498,28 @@ body {
   transform: scale(1.2);
 }
 
+/* 贴纸面板 */
+#sticker-panel {
+    display: none;
+    grid-template-columns: repeat(auto-fill, 64px); /* 每个格子 64px 宽 */
+    gap: 8px;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid #ddd;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* 贴纸图片 */
+.sticker-img {
+    width: 56px;   /* 比emoji大 */
+    height: 56px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: transform 0.2s;
+    object-fit: contain; /* 保持原图比例 */
+}
+
 /* 管理面板 */
 .admin-panel {
   display: none;
@@ -603,7 +632,8 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 80vh;
-    height: 100vh; /* 添加这个确保容器填满视口高度 */
+    height: 100vh;
+    background: transparent !important; /* 移除背景 */
 }
 
 .private-chat-header {
@@ -631,22 +661,6 @@ body {
     border: 1px solid rgba(102, 126, 234, 0.2);
 }
 
-/* 确保背景容器有适当的背景色 */
-.private-chat-container {
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-    /* 或者其他浅色背景 */
-}
-
-/* 确保聊天区域正确布局 */
-.chat-area {
-    display: flex;
-    flex-direction: column;
-    flex: 1; /* 填充剩余空间 */
-    background: white;
-    border-radius: 0 0 12px 12px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
-}
 
 /* 响应式调整 */
 @media (max-width: 1000px) {
@@ -838,6 +852,119 @@ body {
     overflow-y: auto;
   }  
   
+}
+
+/* 共享文件 */
+.dialog-overlay {
+    border-radius: 8px;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.18);
+    padding: 15px;
+    font-size: 14px;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    transition: all 0.2s ease-in-out;
+	display: none; 
+}
+
+.dialog-box {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    overflow: hidden;
+}
+
+.dialog-header {
+    padding: 10px 12px;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+}
+
+.dialog-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.dialog-content {
+    padding: 10px 12px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+#shared-files-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+#shared-files-list li {
+    margin-bottom: 8px;
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#shared-files-list a {
+    text-decoration: none;
+    color: #007bff;
+}
+
+#shared-files-list a:hover {
+    text-decoration: underline;
+}
+
+
+
+/* 密码修改 */
+#change-password-menu {
+    border-radius: 8px; /* 圆角更柔和 */
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.18); /* 阴影稍微加深 */
+    padding: 15px; /* 内边距稍大 */
+    font-size: 14px;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; /* 字体更现代 */
+    transition: all 0.2s ease-in-out; /* 平滑过渡 */
+}
+
+/* 输入框样式 */
+#change-password-menu input {
+    width: 100%;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+#change-password-menu input:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 4px rgba(0, 123, 255, 0.3);
+}
+
+/* 提交按钮样式 */
+#change-password-menu button {
+    width: 100%;
+    padding: 8px 0;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+#change-password-menu button:hover {
+    background-color: #0056b3;
 }
 
 /* 移动端输入区域修复 */

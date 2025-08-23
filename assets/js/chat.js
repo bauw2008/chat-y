@@ -8,8 +8,92 @@ let heartbeatInterval;
 let isScrolledToBottom = true;
 let autoScrollEnabled = true;
 
-// 表情列表
-const emojis = ['😀','😂','😍','👍','🙏','😢','🎉','💯','❤️','🔥','✨','🎯','🤔','😴','🥳'];
+// ==================== 工具函数 ====================
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function formatMessageTime(timestamp) {
+    const now = new Date();
+    const messageTime = new Date(timestamp);
+    const diff = now - messageTime;
+    const minutes = Math.floor(diff / 60000);
+    
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes}分钟前`;
+    if (minutes < 1440) return `${Math.floor(minutes / 60)}小时前`;
+    return messageTime.toLocaleDateString();
+}
+
+function formatRelativeTime(timestamp) {
+    const now = new Date();
+    const time = new Date(timestamp);
+    const diff = now - time;
+    const minutes = Math.floor(diff / 60000);
+    
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes}分钟前`;
+    if (minutes < 1440) return `${Math.floor(minutes / 60)}小时前`;
+    return time.toLocaleDateString();
+}
+
+function handleTyping() {
+    if (!isTyping) isTyping = true;
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(stopTyping, 1000);
+}
+
+function stopTyping() {
+    isTyping = false;
+}
+
+function setButtonLoading(button, text) {
+    button.textContent = text;
+    button.disabled = true;
+}
+
+function setButtonNormal(button, text) {
+    button.textContent = text;
+    button.disabled = false;
+}
+
+function showToast(message, type = 'info') {
+    // 修复这里：使用正确的三元运算符语法
+    const backgroundColor = type === 'error' ? '#e74c3c' : 
+                          type === 'success' ? '#27ae60' : '#3498db';
+    
+    // 移除现有的toast
+    const existingToasts = document.querySelectorAll('.toast');
+    existingToasts.forEach(toast => toast.remove());
+    
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    
+    Object.assign(toast.style, {
+        position: 'fixed',
+        top: '20px',
+        right: '20px',
+        background: backgroundColor,
+        color: 'white',
+        padding: '12px 20px',
+        borderRadius: '6px',
+        zIndex: '10000',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        animation: 'fadeIn 0.3s ease'
+    });
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        if (document.body.contains(toast)) {
+            toast.style.animation = 'fadeOut 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 3000);
+}
 
 // ==================== 私聊功能 ====================
 
@@ -101,7 +185,6 @@ async function fetchPrivateMessages() {
 }
 
 // 渲染私聊消息
-// 渲染私聊消息（统一处理文件格式）
 function renderPrivateMessages(messages) {
     const chatBox = document.getElementById('chat-box');
     if (!chatBox) return;
@@ -121,7 +204,6 @@ function renderPrivateMessages(messages) {
         // 统一处理消息内容
         if (msg.type === 'file') {
             try {
-                // 解析JSON格式的文件信息
                 const fileInfo = JSON.parse(msg.message);
                 if (fileInfo.type === 'image') {
                     isImageMessage = true;
@@ -130,20 +212,16 @@ function renderPrivateMessages(messages) {
                     content = `<a href="uploads/${escapeHtml(fileInfo.saved_name)}" target="_blank" class="chat-file">${escapeHtml(fileInfo.filename)}</a>`;
                 }
             } catch (e) {
-                // 如果解析失败，可能是旧格式的直接路径
                 console.warn('文件信息解析失败，尝试旧格式:', e);
                 if (msg.message.includes('uploads/')) {
-                    // 假设是图片
                     content = `<img src="${msg.message}" class="chat-img" onclick="previewImage(this)">`;
                 } else {
                     content = `<a href="${msg.message}" target="_blank" class="chat-file">下载文件</a>`;
                 }
             }
         } else if (msg.type === 'image') {
-            // 处理旧的直接图片链接格式
             content = `<img src="${msg.message}" class="chat-img" onclick="previewImage(this)">`;
         } else {
-            // 普通文本消息
             content = escapeHtml(msg.message).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
         }
 
@@ -304,20 +382,49 @@ async function checkPrivateUserStatus() {
 }
 
 // ==================== 公共聊天功能 ====================
+const DEBUG_MODE = false; // true 开启调试 false 关闭调试
 
 // 用户状态调试函数
 function debugUserStatus(users) {
-    console.group('🐛 用户状态调试');
-    console.table(users.map(user => ({
+    //console.group('🐛 用户状态调试');
+	if (!DEBUG_MODE) return; // DEBUG_MODE 为 false 时直接退出
+    
+    const statusData = users.map(user => ({
         用户名: user.username,
         在线状态: user.online ? '🟢 在线' : '🔴 离线',
-        最后活动: user.last_active || '无记录',
-        角色: user.role
-    })));
+        最后活动: user.last_active ? formatRelativeTime(user.last_active) : '无记录',
+        角色: user.role,
+        状态来源: user.status_source || '数据库'
+    }));
+    
+    console.table(statusData);
+    
+    console.log('📊 统计信息:', {
+        '总用户数': users.length,
+        '在线用户数': users.filter(u => u.online).length,
+        '离线用户数': users.filter(u => !u.online).length,
+        '当前用户': username
+    });
+    
     console.groupEnd();
 }
 
-// 聊天室前端逻辑
+// 格式化相对时间
+function formatRelativeTime(timestamp) {
+    const now = new Date();
+    const time = new Date(timestamp);
+    const diff = now - time;
+    const minutes = Math.floor(diff / 60000);
+    
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes}分钟前`;
+    if (minutes < 1440) return `${Math.floor(minutes / 60)}小时前`;
+    return time.toLocaleDateString();
+}
+
+// ==================== 心跳功能 ====================
+
+// 启动心跳
 function startHeartbeat() {
     // 每30秒发送一次心跳
     heartbeatInterval = setInterval(async () => {
@@ -329,26 +436,80 @@ function startHeartbeat() {
     }, 30000);
 }
 
+// 停止心跳
 function stopHeartbeat() {
     if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
     }
 }
 
+// 发送心跳
+async function sendHeartbeat() {
+    try {
+        const response = await fetch('api.php?action=heartbeat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                action: 'heartbeat',
+                timestamp: Date.now()
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+            if (data.users_updated) {
+                fetchUsers();
+            }
+        }
+    } catch (error) {
+        console.error('心跳检测失败:', error);
+        handleConnectionError();
+    }
+}
+
+// 处理连接错误
+function handleConnectionError() {
+    showToast('网络连接不稳定', 'warning');
+    setTimeout(fetchUsers, 5000);
+}
+
+// ==================== 页面可见性检测 ====================
+
+// 监听页面可见性变化
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+        fetchUsers();
+        sendHeartbeat();
+    }
+});
+
+// ==================== 网络状态检测 ====================
+
+// 监听网络状态变化
+window.addEventListener('online', function() {
+    showToast('网络连接已恢复', 'success');
+    fetchUsers();
+    sendHeartbeat();
+});
+
+window.addEventListener('offline', function() {
+    showToast('网络连接已断开', 'error');
+});
+
 // DOM加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
-    // 检查是否在私聊页面
     const isPrivatePage = document.querySelector('.private-chat-container') !== null;
     
     if (isPrivatePage) {
-        // 私聊页面有专门的初始化代码
         console.log('检测到私聊页面，跳过公共聊天初始化');
         return;
     }
     
     console.log('初始化公共聊天功能');
-    
-    // 公共聊天页面初始化 - 只调用 initializeChat，setupEventListeners 已经在其中
     initializeChat();
     setupKeyboardShortcuts();
     startHeartbeat();
@@ -357,33 +518,29 @@ document.addEventListener('DOMContentLoaded', function() {
 // 在页面卸载时停止心跳
 window.addEventListener('beforeunload', stopHeartbeat);
 
+// ==================== 初始化增强 ====================
+
 // 初始化聊天室
 function initializeChat() {
-    renderEmojis();
     fetchUserInfo();
     fetchMessages();
     fetchUsers();
     
-    // 设置事件监听器 - 确保只在这里调用
     setupEventListeners();
     
-    // 设置定时刷新
     setInterval(fetchMessages, 3000);
-    setInterval(fetchUsers, 5000);
+    setInterval(fetchUsers, 10000);
     setInterval(updateMessageTimes, 60000);
-    setInterval(checkUnreadPrivateMessages, 10000);
+    setInterval(checkUnreadPrivateMessages, 15000);
     
-    // 添加滚动到顶部按钮
-    createScrollToTopButton();
-    
-    // 监听滚动事件
     const chatBox = document.getElementById('chat-box');
     if (chatBox) {
-        chatBox.addEventListener('scroll', handleChatScroll);
+        scrollToBottom();
     }
     
-    // 设置私聊功能
     setupPrivateChat();
+    startHeartbeat();
+
 }
 
 // 设置事件监听器
@@ -395,7 +552,6 @@ function setupEventListeners() {
         chatForm.addEventListener('submit', function(e) {
             e.preventDefault();
             
-            // 根据页面类型调用不同的发送函数
             if (window.chatConfig && window.chatConfig.isPrivateChat) {
                 sendPrivateMessage(e);
             } else {
@@ -416,10 +572,11 @@ function setupEventListeners() {
         setupAdminFeatures();
     }
     
-    // 表情点击 - 使用事件委托，不需要重复绑定
-    if (!document.hasAttribute('data-emoji-listener-added')) {
-        document.setAttribute('data-emoji-listener-added', 'true');
-        document.addEventListener('click', function(e) {
+    // 表情点击
+    const emojiPanel = document.getElementById('emoji-panel');
+    if (emojiPanel && !emojiPanel.hasAttribute('data-listener-added')) {
+        emojiPanel.setAttribute('data-listener-added', 'true');
+        emojiPanel.addEventListener('click', function(e) {
             if (e.target.classList.contains('emoji')) {
                 const messageInput = document.getElementById('message');
                 if (messageInput) {
@@ -480,7 +637,6 @@ function setupPrivateChat() {
         const userItem = e.target.closest('.user-item');
         if (!userItem) return;
         
-        // 找到用户名
         const usernameElement = userItem.querySelector('.user-info span');
         if (usernameElement) {
             const username = usernameElement.textContent.trim();
@@ -518,21 +674,7 @@ function setupKeyboardShortcuts() {
     });
 }
 
-// 渲染表情
-function renderEmojis() {
-    const emojiPanel = document.getElementById('emoji-panel');
-    if (!emojiPanel) return;
-    
-    emojiPanel.innerHTML = '';
-    
-    emojis.forEach(e => {
-        const span = document.createElement('span');
-        span.className = 'emoji';
-        span.textContent = e;
-        span.title = '点击添加表情';
-        emojiPanel.appendChild(span);
-    });
-}
+
 
 // 获取用户信息
 async function fetchUserInfo() {
@@ -540,7 +682,6 @@ async function fetchUserInfo() {
         const res = await fetch('api.php?action=get_user_info');
         const data = await res.json();
         if (data.status === 'ok') {
-            // 只是更新当前用户信息，不用于状态显示
             console.log('当前用户信息:', data.user);
         }
     } catch (error) {
@@ -558,12 +699,10 @@ async function fetchMessages() {
         if (!chatBox) return;
         
         if (data.status === 'ok') {
-            // 检查是否有新消息
             const currentMessageCount = chatBox.querySelectorAll('.message').length;
             if (currentMessageCount !== data.messages.length) {
                 renderMessages(data.messages);
                 
-                // 如果用户正在查看最新消息，自动滚动到底部
                 if (autoScrollEnabled && isScrolledToBottom) {
                     scrollToBottom();
                 }
@@ -587,7 +726,6 @@ function renderMessages(messages) {
         chatBox.appendChild(messageElement);
     });
     
-    // 添加时间分隔线
     addTimeSeparators();
 }
 
@@ -597,41 +735,77 @@ function createMessageElement(msg) {
     div.className = `message ${msg.username === username ? 'me' : 'other'}`;
     div.dataset.messageId = msg.id;
     div.dataset.timestamp = new Date(msg.created_at).getTime();
-    
+
     const avatarUrl = `https://api.dicebear.com/6.x/pixel-art/svg?seed=${encodeURIComponent(msg.username)}`;
-    let content = escapeHtml(msg.message);
-    
-    // 检测链接
-    content = content.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-    
-    if (msg.type === 'image') {
-        content = `<img src="${escapeHtml(msg.message)}" class="chat-img" alt="图片消息">`;
+    let content = '';
+    let isImageMessage = false;
+    let isFileMessage = false;
+    let fileInfo = null;
+
+    // 处理消息类型
+    if (msg.type === 'file') {
+        try {
+            fileInfo = JSON.parse(msg.message);
+            if (fileInfo.type === 'image') {
+                isImageMessage = true;
+                content = `<img src="uploads/${escapeHtml(fileInfo.saved_name)}" class="chat-img file-preview" alt="${escapeHtml(fileInfo.filename)}" onclick="previewImage(this)">`;
+            } else {
+                isFileMessage = true;
+                content = `<a href="uploads/${escapeHtml(fileInfo.saved_name)}" target="_blank" class="chat-file">${escapeHtml(fileInfo.filename)}</a>`;
+            }
+        } catch (e) {
+            console.error('解析文件消息失败', e);
+            // 回退到普通文本显示
+            content = escapeHtml(msg.message);
+        }
+    } else if (msg.type === 'image') {
+        isImageMessage = true;
+        content = `<img src="${msg.message}" class="chat-img" alt="图片消息" onclick="previewImage(this)">`;
+    } else {
+        // 普通文本消息，先处理贴纸，再处理链接和换行
+        content = escapeHtml(msg.message);
+        
+        // 替换贴纸占位符 [sticker:文件名] -> <img>
+        content = content.replace(/\[sticker:([^\]]+)\]/g, function(match, fileName) {
+            console.log('匹配到贴纸:', match, '文件名:', fileName);
+            isImageMessage = true; // 让外层 div 加上 image-message
+    return `<img src="stickers/${fileName}" class="chat-img file-preview" alt="${fileName}" onclick="previewImage(this)">`;
+});
+        
+        // 处理链接
+        content = content.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+        
+        // 处理换行
+        content = content.replace(/\n/g, '<br>');
     }
-    
+
     const time = formatMessageTime(msg.created_at);
-  
-    // 删除按钮（只给自己发送的消息）
     let deleteBtn = '';
-    if(msg.username === username){
+    
+    // 只有自己的消息显示删除按钮
+    if (msg.username === username) {
         deleteBtn = `<span class="delete-msg-btn" title="删除消息" onclick="deleteMessage(${msg.id}, this)">🗑️</span>`;
     }
-    
+
+    // 构建消息HTML
     div.innerHTML = `
         <div class="bubble">
             <div class="msg-header">
                 <img src="${avatarUrl}" class="message-avatar" alt="${escapeHtml(msg.username)}">
                 <span>${escapeHtml(msg.username)}</span>
-                  ${deleteBtn}
+                ${deleteBtn}
             </div>
-            <div class="message-content">${content}</div>
+            <div class="message-content ${isImageMessage ? 'image-message' : ''} ${isFileMessage ? 'file-message' : ''}">
+                ${content}
+            </div>
             <div class="message-time">${time}</div>
         </div>
     `;
-    
+
     return div;
 }
 
-// 删除主窗口聊天个人信息
+// 删除主窗口聊天消息
 async function deleteMessage(messageId, el) {
     if (!confirm('确定删除这条消息吗？')) return;
 
@@ -647,7 +821,6 @@ async function deleteMessage(messageId, el) {
 
         const data = await res.json();
         if (data.status === 'ok') {
-            // 删除DOM节点
             const msgDiv = el.closest('.message');
             if (msgDiv) msgDiv.remove();
         } else {
@@ -659,7 +832,6 @@ async function deleteMessage(messageId, el) {
     }
 }
 
-// 发送消息
 // 发送消息（公共聊天）
 async function sendMessage(e) {
     e.preventDefault();
@@ -675,7 +847,6 @@ async function sendMessage(e) {
             message: msg
         });
         
-        // 显示发送状态
         const sendBtn = document.querySelector('.send-btn');
         if (sendBtn) {
             const originalText = sendBtn.textContent;
@@ -690,7 +861,7 @@ async function sendMessage(e) {
             
             if (data.status === 'ok') {
                 msgInput.value = '';
-                fetchMessages(); // 重新获取消息更新界面
+                fetchMessages();
                 showToast('消息发送成功', 'success');
             } else {
                 showToast('发送失败: ' + (data.message || '未知错误'), 'error');
@@ -702,7 +873,6 @@ async function sendMessage(e) {
         console.error('发送消息失败:', error);
         showToast('网络错误，发送失败', 'error');
         
-        // 恢复按钮状态
         const sendBtn = document.querySelector('.send-btn');
         if (sendBtn) {
             setButtonNormal(sendBtn, '发送');
@@ -720,56 +890,44 @@ async function fetchUsers() {
         if (!container) return;
         
         if (data.status === 'ok') {
+            debugUserStatus(data.users);
+            
             container.innerHTML = '';
             data.users.forEach(u => {
                 const userElement = createUserElement(u);
                 container.appendChild(userElement);
             });
             
-            // 更新用户状态显示
             updateUsersStatusDisplay(data.users);
+            updateOnlineUserCount(data.users);
         }
     } catch (error) {
         console.error('获取用户列表失败:', error);
     }
 }
 
-// 更新用户状态显示
-function updateUsersStatusDisplay(users) {
-    const userItems = document.querySelectorAll('.user-item');
+// 更新在线用户计数
+function updateOnlineUserCount(users) {
+    const onlineCount = users.filter(u => u.online).length;
+    const onlineCountElement = document.getElementById('online-count');
     
-    userItems.forEach(item => {
-        const usernameElement = item.querySelector('.user-info span');
-        if (usernameElement) {
-            const username = usernameElement.textContent.trim();
-            const user = users.find(u => u.username === username);
-            
-            if (user) {
-                // 更新在线状态
-                item.classList.toggle('online', user.online);
-                
-                // 更新状态指示器
-                const statusIndicator = item.querySelector('.user-status');
-                if (statusIndicator) {
-                    statusIndicator.style.background = user.online ? '#2ecc71' : '#95a5a6';
-                    statusIndicator.title = user.online ? '在线' : '离线';
-                }
-                
-                // 更新私聊图标显示
-                const chatIcon = item.querySelector('.private-chat-icon');
-                if (chatIcon) {
-                    chatIcon.style.display = user.online ? 'block' : 'none';
-                }
-            }
-        }
-    });
+    if (onlineCountElement) {
+        onlineCountElement.textContent = `${onlineCount}人在线`;
+    }
+    
+    if (onlineCount > 1) {
+        document.title = `聊天室 (${onlineCount}人在线)`;
+    }
 }
 
 // 创建用户元素
 function createUserElement(user) {
     const div = document.createElement('div');
-    div.className = `user-item ${user.online ? 'online' : ''}`;
+    div.className = `user-item ${user.online ? 'online' : 'offline'}`;
+    div.dataset.username = user.username;
     div.title = `${user.username} (${user.role}) - ${user.online ? '在线' : '离线'}`;
+	
+	div.style.position = 'relative';
     
     const avatarUrl = `https://api.dicebear.com/6.x/pixel-art/svg?seed=${encodeURIComponent(user.username)}`;
     
@@ -785,6 +943,7 @@ function createUserElement(user) {
             }
         </div>
         <div class="user-status" style="background: ${user.online ? '#2ecc71' : '#95a5a6'}" title="${user.online ? '在线' : '离线'}"></div>
+        ${user.online ? '<span class="user-ping-indicator"></span>' : ''}
     `;
     
     // 添加私聊功能（只对在线用户且不是自己）
@@ -827,6 +986,60 @@ function createUserElement(user) {
     return div;
 }
 
+// 更新用户状态显示
+function updateUsersStatusDisplay(users) {
+    const userItems = document.querySelectorAll('.user-item');
+    
+    userItems.forEach(item => {
+        const username = item.dataset.username;
+        const user = users.find(u => u.username === username);
+        
+        if (user) {
+            // 更新在线状态类
+            item.classList.toggle('online', user.online);
+            item.classList.toggle('offline', !user.online);
+            
+            // 更新状态指示器
+            const statusIndicator = item.querySelector('.user-status');
+            if (statusIndicator) {
+                statusIndicator.style.background = user.online ? '#2ecc71' : '#95a5a6';
+                statusIndicator.title = user.online ? '在线' : '离线';
+            }
+            
+            // 更新私聊图标显示
+            const chatIcon = item.querySelector('.private-chat-icon');
+            if (chatIcon) {
+                chatIcon.style.display = user.online ? 'block' : 'none';
+            }
+            
+            // 更新ping指示器
+            const pingIndicator = item.querySelector('.user-ping-indicator');
+            if (pingIndicator) {
+                if (user.online) {
+                    pingIndicator.style.display = 'block';
+                    // 根据最后活动时间设置ping状态
+                    if (user.last_active) {
+                        const lastActive = new Date(user.last_active);
+                        const now = new Date();
+                        const minutesDiff = (now - lastActive) / (1000 * 60);
+                        
+                        if (minutesDiff < 1) {
+                            pingIndicator.style.background = '#2ecc71'; // 刚刚活动
+                        } else if (minutesDiff < 5) {
+                            pingIndicator.style.background = '#f39c12'; // 5分钟内活动
+                        } else {
+                            pingIndicator.style.background = '#e74c3c'; // 超过5分钟未活动
+                        }
+                    }
+                } else {
+                    pingIndicator.style.display = 'none';
+                }
+            }
+        }
+    });
+}
+
+
 // 打开私聊窗口
 function openPrivateChat(username) {
     window.open(`private_chat.php?user=${encodeURIComponent(username)}`, '_blank',
@@ -853,39 +1066,59 @@ async function checkUnreadPrivateMessages() {
 
 // 显示未读消息徽章
 function showUnreadBadge(count) {
-    let badge = document.getElementById('unread-badge');
-    if (!badge) {
-        badge = document.createElement('div');
-        badge.id = 'unread-badge';
+    // 移除原来的全局徽章（如果存在）
+    const oldBadge = document.getElementById('unread-badge');
+    if (oldBadge) {
+        oldBadge.remove();
+    }
+    
+    // 在私聊图标旁边显示徽章
+    const privateChatIcons = document.querySelectorAll('.private-chat-icon');
+    privateChatIcons.forEach(icon => {
+        // 移除可能已存在的徽章
+        const existingBadge = icon.parentElement.querySelector('.unread-badge');
+        if (existingBadge) {
+            existingBadge.remove();
+        }
+        
+        // 创建新的徽章
+        const badge = document.createElement('span');
+        badge.className = 'unread-badge';
+        badge.textContent = count > 9 ? '9+' : count;
         badge.style.cssText = `
-            position: fixed;
-            top: 10px;
-            right: 10px;
+            position: absolute;
+            top: -5px;
+            right: -5px;
             background: #e74c3c;
             color: white;
             border-radius: 50%;
-            width: 20px;
-            height: 20px;
+            min-width: 16px;
+            height: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
+            font-size: 10px;
             font-weight: bold;
-            cursor: pointer;
-            z-index: 1000;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            z-index: 1001;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+            padding: 0 3px;
         `;
-        badge.title = '未读私聊消息';
-        badge.addEventListener('click', showPrivateChatList);
-        document.body.appendChild(badge);
-    }
-    badge.textContent = count > 9 ? '9+' : count;
+        
+        // 添加到私聊图标的父元素中
+        icon.parentElement.style.position = 'relative';
+        icon.parentElement.appendChild(badge);
+    });
 }
 
 function hideUnreadBadge() {
-    const badge = document.getElementById('unread-badge');
-    if (badge) {
-        badge.remove();
+    // 移除所有未读徽章
+    const badges = document.querySelectorAll('.unread-badge');
+    badges.forEach(badge => badge.remove());
+    
+    // 也移除可能存在的全局徽章
+    const globalBadge = document.getElementById('unread-badge');
+    if (globalBadge) {
+        globalBadge.remove();
     }
 }
 
@@ -1147,35 +1380,6 @@ async function deleteUser() {
     }
 }
 
-// ==================== 工具函数 ====================
-
-function handleTyping() {
-    if (!isTyping) isTyping = true;
-    clearTimeout(typingTimer);
-    typingTimer = setTimeout(stopTyping, 1000);
-}
-
-function stopTyping() {
-    isTyping = false;
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function formatMessageTime(timestamp) {
-    const now = new Date();
-    const messageTime = new Date(timestamp);
-    const diff = now - messageTime;
-    const minutes = Math.floor(diff / 60000);
-    
-    if (minutes < 1) return '刚刚';
-    if (minutes < 60) return `${minutes}分钟前`;
-    if (minutes < 1440) return `${Math.floor(minutes / 60)}小时前`;
-    return messageTime.toLocaleDateString();
-}
 
 function updateMessageTimes() {
     const messages = document.querySelectorAll('.message');
@@ -1188,91 +1392,7 @@ function updateMessageTimes() {
     });
 }
 
-function handleChatScroll() {
-    const chatBox = document.getElementById('chat-box');
-    if (!chatBox) return;
-    
-    const scrollTop = chatBox.scrollTop;
-    const scrollHeight = chatBox.scrollHeight;
-    const clientHeight = chatBox.clientHeight;
-    
-    isScrolledToBottom = scrollHeight - scrollTop - clientHeight < 50;
-    
-    // 显示/隐藏滚动到顶部按钮
-    const scrollToTopBtn = document.querySelector('.scroll-to-top');
-    if (scrollToTopBtn) {
-        scrollToTopBtn.style.display = scrollTop > 200 ? 'flex' : 'none';
-    }
-}
-
-function createScrollToTopButton() {
-    const btn = document.createElement('div');
-    btn.className = 'scroll-to-top';
-    btn.innerHTML = '↑';
-    btn.title = '滚动到顶部';
-    btn.style.display = 'none';
-    
-    btn.addEventListener('click', () => {
-        const chatBox = document.getElementById('chat-box');
-        if (chatBox) {
-            chatBox.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-    });
-    
-    document.body.appendChild(btn);
-}
-
-function scrollToBottom() {
-    const chatBox = document.getElementById('chat-box');
-    if (chatBox) {
-        chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
-    }
-}
-
-function showToast(message, type = 'info') {
-    // 移除现有的toast
-    const existingToasts = document.querySelectorAll('.toast');
-    existingToasts.forEach(toast => toast.remove());
-    
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-    
-    Object.assign(toast.style, {
-        position: 'fixed',
-        top: '20px',
-        right: '20px',
-        background: type === 'error' ? '#e74c3c' : type === 'success' ? '#27ae60' : '#3498db',
-        color: 'white',
-        padding: '12px 20px',
-        borderRadius: '6px',
-        zIndex: '10000',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-        animation: 'fadeIn 0.3s ease'
-    });
-    
-    document.body.appendChild(toast);
-    
-    setTimeout(() => {
-        if (document.body.contains(toast)) {
-            toast.style.animation = 'fadeOut 0.3s ease';
-            setTimeout(() => toast.remove(), 300);
-        }
-    }, 3000);
-}
-
-function setButtonLoading(button, text) {
-    button.textContent = text;
-    button.disabled = true;
-}
-
-function setButtonNormal(button, text) {
-    button.textContent = text;
-    button.disabled = false;
-}
-
 function addTimeSeparators() {
-    // 实现时间分隔线功能
     const messages = document.querySelectorAll('.message');
     let lastDate = null;
     
@@ -1284,6 +1404,8 @@ function addTimeSeparators() {
             const separator = document.createElement('div');
             separator.className = 'time-separator';
             separator.textContent = new Date(timestamp).toLocaleDateString();
+            
+            // 修复CSS属性名
             separator.style.cssText = `
                 text-align: center;
                 margin: 20px 0;
@@ -1304,58 +1426,6 @@ function addTimeSeparators() {
             lastDate = messageDate;
         }
     });
-}
-
-// 图片处理
-function createMessageElement(msg) {
-    const div = document.createElement('div');
-    div.className = `message ${msg.username === username ? 'me' : 'other'}`;
-    div.dataset.messageId = msg.id;
-    div.dataset.timestamp = new Date(msg.created_at).getTime();
-
-    const avatarUrl = `https://api.dicebear.com/6.x/pixel-art/svg?seed=${encodeURIComponent(msg.username)}`;
-    let content = '';
-    let isImageMessage = false; // ✅ 用来标记是否是图片消息
-
-    // 处理消息类型
-    if (msg.type === 'file') {
-        try {
-            const fileInfo = JSON.parse(msg.message);
-            if (fileInfo.type === 'image') {
-                isImageMessage = true;
-                content = `<img src="uploads/${escapeHtml(fileInfo.saved_name)}" class="chat-img file-preview" alt="${escapeHtml(fileInfo.filename)}" onclick="previewImage(this)">`;
-            } else {
-                content = `<a href="uploads/${escapeHtml(fileInfo.saved_name)}" target="_blank" class="chat-file">${escapeHtml(fileInfo.filename)}</a>`;
-            }
-        } catch (e) {
-            console.error('解析文件消息失败', e);
-            content = escapeHtml(msg.message);
-        }
-    } else {
-        content = escapeHtml(msg.message).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-    }
-
-    const time = formatMessageTime(msg.created_at);
-    let deleteBtn = '';
-    if(msg.username === username){
-        deleteBtn = `<span class="delete-msg-btn" title="删除消息" onclick="deleteMessage(${msg.id}, this)">🗑️</span>`;
-    }
-
-    div.innerHTML = `
-    <div class="bubble">
-        <div class="msg-header">
-            <img src="${avatarUrl}" class="message-avatar" alt="${escapeHtml(msg.username)}">
-            <span>${escapeHtml(msg.username)}</span>
-            ${deleteBtn}
-        </div>
-        <div class="message-content ${isImageMessage ? 'image-message' : ''}">
-            ${content}
-        </div>
-        <div class="message-time">${time}</div>
-    </div>
-    `;
-
-    return div;
 }
 
 // 点击图片放大查看
@@ -1465,15 +1535,283 @@ document.addEventListener('click', function(e) {
 });
 
 
-// 添加缺失的CSS选择器支持
+// 信息默认滚动最新
+
+function scrollToBottom() {
+    const chatBox = document.getElementById('chat-box');
+    if (chatBox) {
+        chatBox.scrollTo({
+            top: chatBox.scrollHeight,
+            behavior: 'smooth'
+        });
+    }
+}
+
+// 切换Emoji面板
+function toggleEmojiPanel() {
+    const emojiPanel = document.getElementById('emoji-panel');
+    emojiPanel.style.display = emojiPanel.style.display === 'grid' ? 'none' : 'grid';
+}
+
+// 初始化一些示例emoji
+document.addEventListener('DOMContentLoaded', function() {
+    const emojiPanel = document.getElementById('emoji-panel');
+    const emojis = [
+  '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
+  '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
+  '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩',
+  '🥳', '👍', '🙏', '😢', '🎉', '💯', '❤️', '🔥', '✨', '🎯',
+  '🤔', '😴'
+];
+
+
+    emojis.forEach(emoji => {
+        const emojiElement = document.createElement('div');
+        emojiElement.className = 'emoji-item';
+        emojiElement.textContent = emoji;
+        emojiElement.addEventListener('click', function() {
+            document.getElementById('message').value += emoji;
+            document.getElementById('emoji-panel').style.display = 'none';
+        });
+        emojiPanel.appendChild(emojiElement);
+    });
+    
+    // 滚动到聊天底部
+    const chatBox = document.getElementById('chat-box');
+    if (chatBox) {
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+});
+
+
+// -------------------- 贴纸面板 --------------------
+// 切换贴纸面板
+function toggleStickerPanel() {
+    const panel = document.getElementById('sticker-panel');
+    panel.style.display = panel.style.display === 'grid' ? 'none' : 'grid';
+}
+
+// 初始化贴纸面板
+document.addEventListener('DOMContentLoaded', function() {
+    const stickerPanel = document.getElementById('sticker-panel');
+    const stickers = ['xz.gif', 'xt.gif', 'xh.png', 'bb.gif', 'dc.gif', 'fx.gif', 'hh.gif', 'wj.gif'];
+
+    stickers.forEach(file => {
+        const img = document.createElement('img');
+        img.src = 'stickers/' + file;
+        img.className = 'sticker-img';
+        img.addEventListener('click', function() {
+            const messageInput = document.getElementById('message');
+            // 发送贴纸格式消息
+            messageInput.value = `[sticker:${file}]`;
+            
+            // 自动发送
+            const chatForm = document.getElementById('chat-form');
+            if (chatForm) {
+                chatForm.dispatchEvent(new Event('submit'));
+            }
+            
+            stickerPanel.style.display = 'none';
+        });
+        stickerPanel.appendChild(img);
+    });
+});
+
+
+// 共享文件
+// 点击按钮显示共享文件并加载列表
+function openSharedFiles() {
+    const dialog = document.getElementById('shared-files-dialog');
+    dialog.style.display = (dialog.style.display === 'block') ? 'none' : 'block';
+    loadSharedFiles(); // 每次打开都刷新列表
+}
+
+// 关闭共享文件菜单
+function closeSharedFiles() {
+    document.getElementById('shared-files-dialog').style.display = 'none';
+}
+
+// 加载共享文件列表并显示在左侧栏菜单中
+async function loadSharedFiles() {
+    try {
+        const res = await fetch('api.php?action=get_messages');
+        const data = await res.json();
+
+        const list = document.getElementById('shared-files-list');
+        list.innerHTML = ''; // 先清空
+
+        if (data.status === 'ok' && Array.isArray(data.messages)) {
+            // 过滤出 type 为 file 的消息
+            const files = data.messages.filter(m => m.type === 'file');
+
+            if (files.length === 0) {
+                list.innerHTML = '<li>暂无共享文件</li>';
+            } else {
+                files.forEach(f => {
+                    let msgData = {};
+                    try {
+                        msgData = JSON.parse(f.message);
+                    } catch(e){}
+
+                    if (msgData.saved_name && msgData.filename) {
+                        const li = document.createElement('li');
+                        li.style.display = 'flex';
+                        li.style.justifyContent = 'space-between';
+                        li.style.alignItems = 'center';
+                        li.style.marginBottom = '5px';
+                        li.innerHTML = `
+                            <a href="uploads/${encodeURIComponent(msgData.saved_name)}" download>${msgData.filename}</a>
+                            <span style="font-size:11px;color:#888;">(${f.username})</span>
+                        `;
+                        list.appendChild(li);
+                    }
+                });
+            }
+        } else {
+            list.innerHTML = '<li>加载失败</li>';
+        }
+
+    } catch (err) {
+        console.error('加载共享文件失败:', err);
+        const list = document.getElementById('shared-files-list');
+        list.innerHTML = '<li>加载失败</li>';
+    }
+}
+
+// 管理员删除共享文件
+async function loadSharedFiles() {
+    try {
+        const res = await fetch('api.php?action=get_messages');
+        const data = await res.json();
+        const list = document.getElementById('shared-files-list');
+        list.innerHTML = '';
+
+        if (data.status === 'ok' && data.messages) {
+            const files = data.messages.filter(m => m.type === 'file');
+
+            if (files.length === 0) {
+                list.innerHTML = '<li>暂无共享文件</li>';
+            } else {
+                files.forEach(f => {
+                    let msgData = {};
+                    try { msgData = JSON.parse(f.message); } catch(e){}
+
+                    if (msgData.saved_name && msgData.filename) {
+                        const li = document.createElement('li');
+                        li.style.display = 'flex';
+                        li.style.justifyContent = 'space-between';
+                        li.style.alignItems = 'center';
+                        li.style.marginBottom = '5px';
+
+                        const link = document.createElement('a');
+                        link.href = `uploads/${encodeURIComponent(msgData.saved_name)}`;
+                        link.download = msgData.filename;
+                        link.textContent = msgData.filename;
+
+                        const info = document.createElement('span');
+                        info.style.fontSize = '11px';
+                        info.style.color = '#888';
+                        info.textContent = `(${f.username})`;
+
+                        li.appendChild(link);
+                        li.appendChild(info);
+
+                        // 删除按钮（仅管理员显示）
+                        if (role === 'admin') {
+                            const delBtn = document.createElement('button');
+                            delBtn.textContent = '删除';
+                            delBtn.style.marginLeft = '10px';
+                            delBtn.style.fontSize = '11px';
+                            delBtn.style.cursor = 'pointer';
+                            delBtn.addEventListener('click', async () => {
+                                if (confirm(`确定删除文件 "${msgData.filename}" 吗？`)) {
+                                    // 使用 POST 并传 message_id
+                                    const delRes = await fetch('api.php?action=delete_message_admin', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/x-www-form-urlencoded'
+                                        },
+                                        body: `message_id=${f.id}`
+                                    });
+                                    const delData = await delRes.json();
+                                    if (delData.status === 'ok') {
+                                        li.remove(); // 前端移除
+                                    } else {
+                                        alert('删除失败: ' + delData.message);
+                                    }
+                                }
+                            });
+                            li.appendChild(delBtn);
+                        }
+
+                        list.appendChild(li);
+                    }
+                });
+            }
+        }
+
+    } catch (err) {
+        console.error('加载共享文件失败:', err);
+    }
+}
+
+// 密码修改
+// 切换密码菜单显示
+function toggleChangePasswordMenu() {
+    const menu = document.getElementById('change-password-menu');
+    menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+}
+
+// 通用密码修改
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('change-password-form');
+    if (!form) return;
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const oldPassword = document.getElementById('old-password').value;
+        const newPassword = document.getElementById('new-password').value;
+        const confirmPassword = document.getElementById('confirm-password').value;
+
+        if (newPassword !== confirmPassword) {
+            alert('新密码与确认密码不一致！');
+            return;
+        }
+
+        const formData = new FormData(form);
+
+        try {
+            const res = await fetch('api.php?action=change_password', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await res.json();
+            alert(data.message);
+
+            if (data.status === 'ok') {
+                form.reset();
+                document.getElementById('change-password-menu').style.display = 'none';
+                // 修改成功后退出到登录
+                window.location.href = 'logout.php';
+            }
+        } catch (err) {
+            alert('修改密码失败，请稍后重试');
+        }
+    });
+});
+
+// ==================== 兼容性支持 ====================
+
 if (!Element.prototype.matches) {
-    Element.prototype.matches = Element.prototype.msMatchesSelector ||
+    Element.prototype.matches = Element.prototype.msMatchesSelector || 
                                 Element.prototype.webkitMatchesSelector;
 }
 
 if (!Element.prototype.closest) {
     Element.prototype.closest = function(s) {
-        var el = this;
+        let el = this;
         do {
             if (el.matches(s)) return el;
             el = el.parentElement || el.parentNode;
