@@ -99,7 +99,7 @@ try {
     // 发送消息
     elseif ($action==='send_message') {
         if (!isset($_SESSION['username'])) {
-            json_response(['status'=>'极速','message'=>'未登录'],401);
+            json_response(['status'=>'error','message'=>'未登录'],401);
         }
         $message = trim($_POST['message'] ?? '');
         if ($message==='') {
@@ -184,7 +184,7 @@ try {
             
             if ($user) {
                 json_response([
-                    'status' => '极速',
+                    'status' => 'ok',
                     'user' => [
                         'username' => $user['username'],
                         'role' => $user['role'],
@@ -207,13 +207,13 @@ try {
         }
 
         $db->exec("DELETE FROM messages");
-        json_response(['极速'=>'ok','message'=>'聊天记录已清理']);
+        json_response(['status'=>'ok','message'=>'聊天记录已清理']);
     }
 
     // 获取可删除用户列表
     elseif ($action === 'get_deletable_users') {
-        if (!isset($_SESSION['username']) || ($极速['role'] ?? '') !== 'admin') {
-            json_response(['status'=>'error','message'=>'极速'],403);
+        if (!isset($_SESSION['username']) || ($_SESSION['role'] ?? '') !== 'admin') {
+            json_response(['status'=>'error','message'=>'无权限'],403);
         }
 
         $stmt = $db->prepare("SELECT username FROM users WHERE role != 'admin' ORDER BY username ASC");
@@ -433,23 +433,36 @@ try {
         json_response(['status'=>'ok','message'=>'消息已删除']);
     }
 
-    // 心跳动作 - 增强版
-    elseif ($action === 'heartbeat') {
-        if (!isset($_SESSION['username'])) {
-            json_response(['status'=>'error','message'=>'未登录'],401);
-        }
-        
-        // 更新最后活动时间和在线状态 - 使用上海时间
-        $currentTime = getShanghaiTime();
-        $stmt = $db->prepare("UPDATE users SET last_active = :time, is_online = 1 WHERE username = :u");
-        $stmt->execute([':time' => $currentTime, ':u' => $_SESSION['username']]);
-        
-        // 清理长时间未活动的用户
-        $cleanupStmt = $db->prepare("UPDATE users SET is_online = 0 WHERE datetime(last_active) < datetime('now', '-5 minutes')");
-        $cleanupStmt->execute();
-        
-        json_response(['status'=>'ok','message'=>'心跳更新成功', 'users_updated' => true]);
-    }
+	// 心跳动作 - 增强版
+	elseif ($action === 'heartbeat') {
+		if (!isset($_SESSION['username'])) {
+			json_response(['status'=>'error','message'=>'未登录'],401);
+		}
+		
+		// 验证会话有效性
+		$username = $_SESSION['username'];
+		$currentSessionId = session_id();
+		$stmt = $db->prepare("SELECT session_id FROM users WHERE username = :u");
+		$stmt->execute([':u' => $username]);
+		$user = $stmt->fetch(PDO::FETCH_ASSOC);
+		
+		if ($user && $user['session_id'] !== $currentSessionId) {
+			// 会话无效，清除会话
+			session_destroy();
+			json_response(['status'=>'error','message'=>'账号已在其他地方登录'],401);
+		}
+		
+		// 更新最后活动时间和在线状态 - 使用上海时间
+		$currentTime = getShanghaiTime();
+		$stmt = $db->prepare("UPDATE users SET last_active = :time, is_online = 1 WHERE username = :u");
+		$stmt->execute([':time' => $currentTime, ':u' => $_SESSION['username']]);
+		
+		// 清理长时间未活动的用户
+		$cleanupStmt = $db->prepare("UPDATE users SET is_online = 0 WHERE datetime(last_active) < datetime('now', '-5 minutes')");
+		$cleanupStmt->execute();
+		
+		json_response(['status'=>'ok','message'=>'心跳更新成功', 'users_updated' => true]);
+	}
 
     // 时间检查动作
     elseif ($action === 'check_time') {
@@ -504,6 +517,60 @@ try {
 		json_response(['status'=>'ok','message'=>'消息已删除']);
 	}
 	
+
+	// 获取服务器本地文件列表
+	elseif ($action === 'get_local_files') {
+		$uploadDir = __DIR__ . '/uploads/';
+		$files = [];
+		
+		// 确保上传目录存在
+		if (!file_exists($uploadDir)) {
+			mkdir($uploadDir, 0777, true);
+		}
+		
+		// 读取uploads目录中的所有文件
+		if (file_exists($uploadDir)) {
+			$fileList = scandir($uploadDir);
+			foreach ($fileList as $file) {
+				if ($file !== '.' && $file !== '..' && !is_dir($uploadDir . $file)) {
+					$files[] = $file;
+				}
+			}
+		}
+		
+		json_response(['status' => 'ok', 'files' => $files]);
+	}
+
+	// 删除服务器本地文件（仅删除物理文件，用于没有数据库记录的情况）
+	elseif ($action === 'delete_local_file') {
+		// 检查登录与管理员身份
+		if (!isset($_SESSION['username']) || ($_SESSION['role'] ?? '') !== 'admin') {
+			json_response(['status'=>'error','message'=>'无权限'],403);
+		}
+
+		// 获取文件名
+		$filename = $_POST['filename'] ?? '';
+		if (empty($filename)) {
+			json_response(['status'=>'error','message'=>'文件名不能为空'],400);
+		}
+
+		// 安全过滤文件名
+		$filename = basename($filename);
+		$filePath = __DIR__ . '/uploads/' . $filename;
+		
+		// 检查文件是否存在
+		if (!file_exists($filePath)) {
+			json_response(['status'=>'error','message'=>'文件不存在'],404);
+		}
+		
+		// 删除文件
+		if (unlink($filePath)) {
+			json_response(['status'=>'ok','message'=>'文件删除成功']);
+		} else {
+			json_response(['status'=>'error','message'=>'文件删除失败'],500);
+		}
+	}	
+	
 	// 修改密码接口
 	elseif ($action === 'change_password') {
 		session_start();
@@ -537,19 +604,17 @@ try {
 		json_response(['status'=>'ok','message'=>'密码修改成功']);
 	}
 
-
-    // 退出登录 - 增强版
-    elseif ($action==='logout') {
-        if (isset($_SESSION['username'])) {
-            // 将用户标记为离线
-            $stmt = $db->prepare("UPDATE users SET is_online = 0 WHERE username = :u");
-            $stmt->execute([':u' => $_SESSION['username']]);
-        }
-        
-        session_destroy();
-        json_response(['status'=>'ok','message'=>'已登出']);
-    }
-
+	// 退出登录 - 增强版
+	elseif ($action==='logout') {
+		if (isset($_SESSION['username'])) {
+			// 将用户标记为离线并清除 session_id
+			$stmt = $db->prepare("UPDATE users SET is_online = 0, session_id = NULL WHERE username = :u");
+			$stmt->execute([':u' => $_SESSION['username']]);
+		}
+		
+		session_destroy();
+		json_response(['status'=>'ok','message'=>'已登出']);
+	}
     else {
         json_response(['status'=>'error','message'=>'未知操作'],400);
     }

@@ -7,6 +7,105 @@ let typingTimer = null;
 let heartbeatInterval;
 let isScrolledToBottom = true;
 let autoScrollEnabled = true;
+let messageInput, chatForm, sendButton;
+
+
+// ==================== 用户活动检测 ====================
+let inactivityTimer;
+const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5分钟
+
+// ==================== 初始化函数 ====================
+
+// 统一的初始化函数
+function initChatRoom() {
+    console.log('初始化聊天室...');
+    
+    // 首先设置正确的DOM元素引用
+    messageInput = document.getElementById('message');
+    chatForm = document.getElementById('chat-form');
+    sendButton = document.querySelector('.chat-input-send');
+	
+	// 初始化用户活动检测
+    setupInactivityTimer();
+    
+    // 检查是否在私聊页面
+    const isPrivatePage = document.querySelector('.private-chat-container') !== null;
+    
+    if (isPrivatePage) {
+        console.log('检测到私聊页面，初始化私聊功能');
+        initPrivateChat();
+        return;
+    }
+    
+    console.log('初始化公共聊天功能');
+    initializeChat();
+    setupKeyboardShortcuts();
+    startHeartbeat();
+}
+
+// ==================== 用户活动检测函数 ====================
+
+// 设置用户活动检测计时器
+function setupInactivityTimer() {
+    // 重置计时器
+    resetInactivityTimer();
+    
+    // 监听用户活动事件
+    document.addEventListener('mousemove', resetInactivityTimer);
+    document.addEventListener('keypress', resetInactivityTimer);
+    document.addEventListener('click', resetInactivityTimer);
+    document.addEventListener('scroll', resetInactivityTimer);
+    document.addEventListener('touchstart', resetInactivityTimer);
+    document.addEventListener('input', resetInactivityTimer);
+    
+    // 页面可见性变化时也重置计时器
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+            resetInactivityTimer();
+        }
+    });
+}
+
+// 重置不活动计时器
+function resetInactivityTimer() {
+    // 清除现有计时器
+    clearTimeout(inactivityTimer);
+    
+    // 设置新的计时器（5分钟）
+    inactivityTimer = setTimeout(logoutDueToInactivity, INACTIVITY_TIMEOUT);
+}
+
+// 由于不活动而退出登录
+function logoutDueToInactivity() {
+    // 停止所有定时器
+    stopHeartbeat();
+    clearInterval(typingTimer);
+    
+    // 显示提示信息
+    showToast('由于5分钟无操作，您已自动退出登录', 'warning');
+    
+    // 延迟一下让用户看到提示
+    setTimeout(() => {
+        window.location.href = 'logout.php?reason=inactivity';
+    }, 2000);
+}
+
+// 修改原有的logout函数，清除计时器
+function logout() {
+    // 清除不活动计时器
+    clearTimeout(inactivityTimer);
+    
+    if (confirm('确定要退出登录吗？')) {
+        window.location.href = 'logout.php';
+    }
+}
+// 在页面卸载时停止所有计时器
+window.addEventListener('beforeunload', function() {
+    stopHeartbeat();
+    clearTimeout(inactivityTimer);
+    clearTimeout(typingTimer);
+});
+
 
 // ==================== 工具函数 ====================
 function escapeHtml(text) {
@@ -97,6 +196,7 @@ function showToast(message, type = 'info') {
 
 // ==================== 私聊功能 ====================
 
+
 // 初始化私聊功能
 function initPrivateChat() {
     if (!window.chatConfig || !window.chatConfig.isPrivateChat) return;
@@ -105,10 +205,20 @@ function initPrivateChat() {
     
     // 设置事件监听器
     setupPrivateEventListeners();
-    
-    // 初始化UI组件
-    renderPrivateEmojis();
-    
+	
+	// 初始化私聊特定的工具栏事件
+    setupPrivateToolbarEvents();
+	
+	// 初始化UI组件 - 使用公共的函数
+    initializeEmojiPanel(); // 使用公共的表情面板初始化
+    initializeStickerPanel(); // 使用公共的贴纸面板初始化
+    setupToolbarEvents(); // 添加工具栏事件绑定
+    setupPanelCloseHandlers(); // 添加面板关闭处理
+	
+	
+	//添加文件上传事件监听
+    setupFileUpload();
+	
     // 开始获取消息和状态
     fetchPrivateMessages();
     checkPrivateUserStatus();
@@ -145,28 +255,66 @@ function setupPrivateEventListeners() {
     }
 }
 
-// 渲染私聊表情面板
-function renderPrivateEmojis() {
-    if (!window.chatConfig || !window.chatConfig.isPrivateChat) return;
+// ==================== 私聊页面工具栏初始化 ====================
+
+// 初始化私聊页面工具栏
+function setupPrivateToolbarEvents() {
+    console.log('初始化私聊页面工具栏...');
     
-    const panel = document.getElementById('emoji-panel');
-    if (!panel) return;
+    // 获取所有工具栏按钮
+    const toolbarButtons = document.querySelectorAll('.chat-input-action.clickable');
     
-    panel.innerHTML = '';
-    window.chatConfig.emojis.forEach(e => {
-        const div = document.createElement('div');
-        div.className = 'emoji-item';
-        div.textContent = e;
-        div.onclick = () => {
-            const messageInput = document.getElementById('message');
-            if (messageInput) {
-                messageInput.value += e;
-                panel.style.display = 'none';
-                messageInput.focus();
-            }
-        };
-        panel.appendChild(div);
-    });
+    if (toolbarButtons.length >= 5) {
+        // 文件上传按钮 (第一个)
+        if (!toolbarButtons[0].hasAttribute('data-listener-added')) {
+            toolbarButtons[0].setAttribute('data-listener-added', 'true');
+            toolbarButtons[0].addEventListener('click', function() {
+                const fileInput = document.getElementById('file-input');
+                if (fileInput) {
+                    fileInput.click();
+                }
+            });
+        }
+        
+        // 表情按钮 (第二个)
+        if (!toolbarButtons[1].hasAttribute('data-listener-added')) {
+            toolbarButtons[1].setAttribute('data-listener-added', 'true');
+            toolbarButtons[1].addEventListener('click', function() {
+                toggleEmojiPanel();
+            });
+        }
+        
+        // 贴纸按钮 (第三个)
+        if (!toolbarButtons[2].hasAttribute('data-listener-added')) {
+            toolbarButtons[2].setAttribute('data-listener-added', 'true');
+            toolbarButtons[2].addEventListener('click', function() {
+                toggleStickerPanel();
+            });
+        }
+        
+        // 清空按钮 (第四个) - 现在在JS中处理
+        if (!toolbarButtons[3].hasAttribute('data-listener-added')) {
+            toolbarButtons[3].setAttribute('data-listener-added', 'true');
+            toolbarButtons[3].addEventListener('click', function() {
+                deletePrivateChatHistory();
+            });
+        }
+        
+        // 更多工具按钮 (第五个)
+        if (!toolbarButtons[4].hasAttribute('data-listener-added')) {
+            toolbarButtons[4].setAttribute('data-listener-added', 'true');
+            toolbarButtons[4].addEventListener('click', function() {
+                showPrivateMoreTools();
+            });
+        }
+    }
+    
+    console.log('私聊页面工具栏事件设置完成');
+}
+
+// 私聊页面更多工具
+function showPrivateMoreTools() {
+    alert('私聊页面更多工具功能待开发');
 }
 
 // 获取私聊消息
@@ -201,7 +349,7 @@ function renderPrivateMessages(messages) {
         let content = '';
         let isImageMessage = false;
 
-        // 统一处理消息内容
+        // 统一处理消息内容（与公共聊天相同的逻辑）
         if (msg.type === 'file') {
             try {
                 const fileInfo = JSON.parse(msg.message);
@@ -220,9 +368,27 @@ function renderPrivateMessages(messages) {
                 }
             }
         } else if (msg.type === 'image') {
+            isImageMessage = true;
             content = `<img src="${msg.message}" class="chat-img" onclick="previewImage(this)">`;
+        } else if (msg.type === 'sticker') {
+            // 处理贴纸消息（与公共聊天相同的逻辑）
+            isImageMessage = true;
+            content = `<img src="stickers/${escapeHtml(msg.message)}" class="chat-img file-preview" alt="${escapeHtml(msg.message)}" onclick="previewImage(this)">`;
         } else {
-            content = escapeHtml(msg.message).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+            // 普通文本消息（与公共聊天相同的处理逻辑）
+            content = escapeHtml(msg.message);
+            
+            // 替换贴纸占位符 [sticker:文件名] -> <img>
+            content = content.replace(/\[sticker:([^\]]+)\]/g, function(match, fileName) {
+                isImageMessage = true;
+                return `<img src="stickers/${fileName}" class="chat-img file-preview" alt="${fileName}" onclick="previewImage(this)">`;
+            });
+            
+            // 处理链接
+            content = content.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+            
+            // 处理换行
+            content = content.replace(/\n/g, '<br>');
         }
 
         const deleteBtn = isMe ? 
@@ -250,51 +416,70 @@ function renderPrivateMessages(messages) {
     chatBox.scrollTop = chatBox.scrollHeight;
 }
 
-// 发送私聊消息
+// ------------ 发送私聊消息  -----------------------
+// 修改发送私聊消息函数，添加贴纸处理
 async function sendPrivateMessage(e) {
     e.preventDefault();
     
     if (!window.chatConfig || !window.chatConfig.isPrivateChat) return;
+    if (!messageInput) return;
     
-    const msgInput = document.getElementById('message');
-    if (!msgInput) return;
-    
-    const msg = msgInput.value.trim();
+    const msg = messageInput.value.trim();
     if (!msg) return;
     
-    const btn = document.querySelector('.send-btn');
-    const originalText = btn.textContent;
+    // 检查是否是贴纸消息（使用与公共聊天相同的逻辑）
+    let messageType = 'text';
+    let finalMessage = msg;
     
-    setButtonLoading(btn, '发送中...');
+    // 检测贴纸格式 [sticker:文件名] - 与公共聊天相同的正则表达式
+    const stickerMatch = msg.match(/\[sticker:([^\]]+)\]/);
+    if (stickerMatch) {
+        messageType = 'sticker';
+        finalMessage = stickerMatch[1]; // 只发送文件名
+    }
     
     try {
         const form = new URLSearchParams({
             action: 'send_private_message',
             receiver: window.chatConfig.targetUser,
-            message: msg,
-            type: 'text'
+            message: finalMessage,
+            type: messageType
         });
         
-        const res = await fetch('api.php', {
-            method: 'POST',
-            body: form
-        });
-        
-        const data = await res.json();
-        if (data.status === 'ok') {
-            msgInput.value = '';
-            fetchPrivateMessages();
-            stopTyping();
-            showToast('消息发送成功', 'success');
-        } else {
-            showToast('发送失败: ' + (data.message || '未知错误'), 'error');
+        if (sendButton) {
+            const originalHTML = sendButton.innerHTML;
+            sendButton.innerHTML = '<div class="loading-spinner"></div>';
+            sendButton.disabled = true;
+            
+            const res = await fetch('api.php', {
+                method: 'POST',
+                body: form
+            });
+            
+            const data = await res.json();
+            if (data.status === 'ok') {
+                messageInput.value = '';
+                fetchPrivateMessages();
+                stopTyping();
+                showToast('消息发送成功', 'success');
+            } else {
+                showToast('发送失败: ' + (data.message || '未知错误'), 'error');
+            }
+            
+            sendButton.innerHTML = originalHTML;
+            sendButton.disabled = false;
         }
     } catch (e) {
         console.error('发送私聊消息失败:', e);
         showToast('网络错误，发送失败', 'error');
+        
+        if (sendButton) {
+            sendButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>`;
+            sendButton.disabled = false;
+        }
     }
-    
-    setButtonNormal(btn, originalText);
 }
 
 // 删除私聊消息
@@ -500,39 +685,37 @@ window.addEventListener('offline', function() {
     showToast('网络连接已断开', 'error');
 });
 
-// DOM加载完成后初始化
-document.addEventListener('DOMContentLoaded', function() {
-    const isPrivatePage = document.querySelector('.private-chat-container') !== null;
-    
-    if (isPrivatePage) {
-        console.log('检测到私聊页面，跳过公共聊天初始化');
-        return;
-    }
-    
-    console.log('初始化公共聊天功能');
-    initializeChat();
-    setupKeyboardShortcuts();
-    startHeartbeat();
-});
-
 // 在页面卸载时停止心跳
 window.addEventListener('beforeunload', stopHeartbeat);
 
-// ==================== 初始化增强 ====================
-
-// 初始化聊天室
+// 修改初始化函数，添加工具栏事件绑定
 function initializeChat() {
+    console.log('初始化聊天室功能...');
+    
+    // 缓存DOM元素 - 使用正确的选择器
+    messageInput = document.getElementById('message');
+    chatForm = document.getElementById('chat-form');
+    sendButton = document.querySelector('.chat-input-send');
+    
+    // 初始化功能
     fetchUserInfo();
     fetchMessages();
     fetchUsers();
     
     setupEventListeners();
+    initializeEmojiPanel();
+    initializeStickerPanel();
+    setupToolbarEvents(); // 添加工具栏事件绑定
+    setupPanelCloseHandlers(); // 添加面板关闭处理
+	setupAdminFeatures(); // 添加管理功能初始化
     
+    // 设置定时器
     setInterval(fetchMessages, 3000);
     setInterval(fetchUsers, 10000);
     setInterval(updateMessageTimes, 60000);
     setInterval(checkUnreadPrivateMessages, 15000);
     
+    // 滚动到底部
     const chatBox = document.getElementById('chat-box');
     if (chatBox) {
         scrollToBottom();
@@ -540,13 +723,18 @@ function initializeChat() {
     
     setupPrivateChat();
     startHeartbeat();
-
+    
+    console.log('聊天室初始化完成');
 }
+
+// DOM加载完成后初始化 - 替换原来的DOMContentLoaded
+document.addEventListener('DOMContentLoaded', initChatRoom);
 
 // 设置事件监听器
 function setupEventListeners() {
-    // 消息发送表单
-    const chatForm = document.getElementById('chat-form');
+    console.log('设置事件监听器...');
+    
+    // 消息发送表单 - 确保只添加一次监听器
     if (chatForm && !chatForm.hasAttribute('data-listener-added')) {
         chatForm.setAttribute('data-listener-added', 'true');
         chatForm.addEventListener('submit', function(e) {
@@ -560,72 +748,34 @@ function setupEventListeners() {
         });
     }
     
-    // 退出登录
-    const logoutIcon = document.getElementById('logout-icon');
-    if (logoutIcon && !logoutIcon.hasAttribute('data-listener-added')) {
-        logoutIcon.setAttribute('data-listener-added', 'true');
-        logoutIcon.addEventListener('click', logout);
-    }
-    
-    // 管理员功能
-    if (role === 'admin') {
-        setupAdminFeatures();
-    }
-    
-    // 表情点击
-    const emojiPanel = document.getElementById('emoji-panel');
-    if (emojiPanel && !emojiPanel.hasAttribute('data-listener-added')) {
-        emojiPanel.setAttribute('data-listener-added', 'true');
-        emojiPanel.addEventListener('click', function(e) {
-            if (e.target.classList.contains('emoji')) {
-                const messageInput = document.getElementById('message');
-                if (messageInput) {
-                    messageInput.value += e.target.textContent;
-                    messageInput.focus();
-                }
-            }
-        });
-    }
-    
-    // 输入框按键事件
-    const messageInput = document.getElementById('message');
+    // 输入框事件 - 确保只添加一次监听器
     if (messageInput && !messageInput.hasAttribute('data-listener-added')) {
         messageInput.setAttribute('data-listener-added', 'true');
         messageInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                const chatForm = document.getElementById('chat-form');
                 if (chatForm) {
                     chatForm.dispatchEvent(new Event('submit'));
                 }
             }
         });
+        
+        messageInput.addEventListener('input', handleTyping);
     }
-}
-
-// 设置管理员功能
-function setupAdminFeatures() {
-    const adminMenu = document.getElementById('admin-menu');
-    const clearChatBtn = document.getElementById('clear-chat');
-    const manageUsersBtn = document.getElementById('manage-users');
-    const deleteUserBtn = document.getElementById('delete-user');
     
-    if (adminMenu) adminMenu.addEventListener('click', toggleAdminPopup);
-    if (clearChatBtn) clearChatBtn.addEventListener('click', clearChat);
-    if (manageUsersBtn) manageUsersBtn.addEventListener('click', toggleUserManagement);
-    if (deleteUserBtn) deleteUserBtn.addEventListener('click', deleteUser);
-    
-    // 点击外部关闭管理员弹窗
-    document.addEventListener('click', function(e) {
-        const adminPopup = document.getElementById('admin-popup');
-        if (adminPopup && adminPopup.style.display === 'block' &&
-            !adminPopup.contains(e.target)) {
-            const adminMenu = document.getElementById('admin-menu');
-            if (e.target !== adminMenu) {
-                adminPopup.style.display = 'none';
-            }
+    // 退出登录按钮
+    const logoutButtons = document.querySelectorAll('.logout, [onclick*="logout"]');
+    logoutButtons.forEach(button => {
+        if (!button.hasAttribute('data-listener-added')) {
+            button.setAttribute('data-listener-added', 'true');
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                logout();
+            });
         }
     });
+    
+    console.log('事件监听器设置完成');
 }
 
 // 设置私聊功能
@@ -835,10 +985,10 @@ async function deleteMessage(messageId, el) {
 // 发送消息（公共聊天）
 async function sendMessage(e) {
     e.preventDefault();
-    const msgInput = document.getElementById('message');
-    if (!msgInput) return;
     
-    const msg = msgInput.value.trim();
+    if (!messageInput) return;
+    
+    const msg = messageInput.value.trim();
     if (!msg) return;
     
     try {
@@ -847,10 +997,10 @@ async function sendMessage(e) {
             message: msg
         });
         
-        const sendBtn = document.querySelector('.send-btn');
-        if (sendBtn) {
-            const originalText = sendBtn.textContent;
-            setButtonLoading(sendBtn, '发送中...');
+        if (sendButton) {
+            const originalHTML = sendButton.innerHTML;
+            sendButton.innerHTML = '<div class="loading-spinner"></div>';
+            sendButton.disabled = true;
             
             const response = await fetch('api.php', {
                 method: 'POST',
@@ -860,22 +1010,25 @@ async function sendMessage(e) {
             const data = await response.json();
             
             if (data.status === 'ok') {
-                msgInput.value = '';
+                messageInput.value = '';
                 fetchMessages();
                 showToast('消息发送成功', 'success');
             } else {
                 showToast('发送失败: ' + (data.message || '未知错误'), 'error');
             }
             
-            setButtonNormal(sendBtn, originalText);
+            sendButton.innerHTML = originalHTML;
+            sendButton.disabled = false;
         }
     } catch (error) {
         console.error('发送消息失败:', error);
         showToast('网络错误，发送失败', 'error');
         
-        const sendBtn = document.querySelector('.send-btn');
-        if (sendBtn) {
-            setButtonNormal(sendBtn, '发送');
+        if (sendButton) {
+            sendButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>`;
+            sendButton.disabled = false;
         }
     }
 }
@@ -1260,7 +1413,7 @@ async function logout() {
         if (data.status === 'ok') {
             showToast('已退出登录', 'success');
             setTimeout(() => {
-                window.location.href = 'login.php';
+                window.location.href = 'logout.php';
             }, 1000);
         } else {
             showToast('退出失败: ' + (data.message || '未知错误'), 'error');
@@ -1271,6 +1424,41 @@ async function logout() {
     }
 }
 
+// ------------设置管理员功能-------------
+
+// 切换管理员面板
+function toggleAdminPanel() {
+    const adminPanel = document.getElementById('admin-panel');
+    if (adminPanel) {
+        adminPanel.style.display = adminPanel.style.display === 'block' ? 'none' : 'block';
+    }
+}
+
+// 初始化管理功能
+function setupAdminFeatures() {
+    const adminMenu = document.getElementById('admin-menu');
+    const clearChatBtn = document.getElementById('clear-chat');
+    const manageUsersBtn = document.getElementById('manage-users');
+    const deleteUserBtn = document.getElementById('delete-user');
+    
+    if (adminMenu) adminMenu.addEventListener('click', toggleAdminPopup);
+    if (clearChatBtn) clearChatBtn.addEventListener('click', clearChat);
+    if (manageUsersBtn) manageUsersBtn.addEventListener('click', toggleUserManagement);
+    if (deleteUserBtn) deleteUserBtn.addEventListener('click', deleteUser);
+    
+    // 点击外部关闭管理员弹窗
+    document.addEventListener('click', function(e) {
+        const adminPopup = document.getElementById('admin-popup');
+        if (adminPopup && adminPopup.style.display === 'block' &&
+            !adminPopup.contains(e.target)) {
+            const adminMenu = document.getElementById('admin-menu');
+            if (e.target !== adminMenu) {
+                adminPopup.style.display = 'none';
+            }
+        }
+    });
+}
+
 // 管理员功能
 function toggleAdminPopup() {
     const popup = document.getElementById('admin-popup');
@@ -1279,6 +1467,7 @@ function toggleAdminPopup() {
     }
 }
 
+// 管理员清理聊天记录
 async function clearChat() {
     if (role !== 'admin') return;
     
@@ -1315,6 +1504,7 @@ function toggleUserManagement() {
     }
 }
 
+// 管理员用户管理
 async function loadDeletableUsers() {
     try {
         const response = await fetch('api.php?action=get_deletable_users');
@@ -1339,6 +1529,7 @@ async function loadDeletableUsers() {
     }
 }
 
+// 管理员用户管理删除
 async function deleteUser() {
     if (role !== 'admin') return;
     
@@ -1547,53 +1738,158 @@ function scrollToBottom() {
     }
 }
 
+
+// -------------------- 工具栏 --------------------
+// ==================== 工具栏功能 ====================
+
+// 切换表情面板
+function toggleEmojiPanel() {
+    const emojiPanel = document.getElementById('emoji-panel');
+    const stickerPanel = document.getElementById('sticker-panel');
+    
+    if (emojiPanel && emojiPanel.style.display === 'grid') {
+        emojiPanel.style.display = 'none';
+    } else if (emojiPanel) {
+        emojiPanel.style.display = 'grid';
+        if (stickerPanel) {
+            stickerPanel.style.display = 'none';
+        }
+    }
+}
+
+// 切换贴纸面板
+function toggleStickerPanel() {
+    const stickerPanel = document.getElementById('sticker-panel');
+    const emojiPanel = document.getElementById('emoji-panel');
+    
+    if (stickerPanel && stickerPanel.style.display === 'grid') {
+        stickerPanel.style.display = 'none';
+    } else if (stickerPanel) {
+        stickerPanel.style.display = 'grid';
+        if (emojiPanel) {
+            emojiPanel.style.display = 'none';
+        }
+    }
+}
+
+
+// 设置工具栏事件
+function setupToolbarEvents() {
+    console.log('设置工具栏事件...');
+    
+    // 获取所有工具栏按钮
+    const toolbarButtons = document.querySelectorAll('.chat-input-action.clickable');
+    
+    if (toolbarButtons.length >= 4) {
+        // 文件上传按钮 (第一个)
+        if (!toolbarButtons[0].hasAttribute('data-listener-added')) {
+            toolbarButtons[0].setAttribute('data-listener-added', 'true');
+            toolbarButtons[0].addEventListener('click', function() {
+                const fileInput = document.getElementById('file-input');
+                if (fileInput) {
+                    fileInput.click();
+                }
+            });
+        }
+        
+        // 表情按钮 (第二个)
+        if (!toolbarButtons[1].hasAttribute('data-listener-added')) {
+            toolbarButtons[1].setAttribute('data-listener-added', 'true');
+            toolbarButtons[1].addEventListener('click', toggleEmojiPanel);
+        }
+        
+        // 贴纸按钮 (第三个)
+        if (!toolbarButtons[2].hasAttribute('data-listener-added')) {
+            toolbarButtons[2].setAttribute('data-listener-added', 'true');
+            toolbarButtons[2].addEventListener('click', toggleStickerPanel);
+        }
+        
+        // 更多工具按钮 (第四个)
+        if (!toolbarButtons[3].hasAttribute('data-listener-added')) {
+            toolbarButtons[3].setAttribute('data-listener-added', 'true');
+            toolbarButtons[3].addEventListener('click', showMoreTools);
+        }
+    }
+    
+    console.log('工具栏事件设置完成');
+}
+
+
+// -------------------- Emoji面板面板 --------------------
+
 // 切换Emoji面板
 function toggleEmojiPanel() {
     const emojiPanel = document.getElementById('emoji-panel');
-    emojiPanel.style.display = emojiPanel.style.display === 'grid' ? 'none' : 'grid';
+    const stickerPanel = document.getElementById('sticker-panel');
+    
+    if (emojiPanel.style.display === 'grid') {
+        emojiPanel.style.display = 'none';
+    } else {
+        emojiPanel.style.display = 'grid';
+        if (stickerPanel) {
+            stickerPanel.style.display = 'none';
+        }
+    }
 }
 
 // 初始化一些示例emoji
-document.addEventListener('DOMContentLoaded', function() {
+function initializeEmojiPanel() {
     const emojiPanel = document.getElementById('emoji-panel');
+    if (!emojiPanel || emojiPanel.hasAttribute('data-initialized')) return;
+    
     const emojis = [
-  '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
-  '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
-  '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩',
-  '🥳', '👍', '🙏', '😢', '🎉', '💯', '❤️', '🔥', '✨', '🎯',
-  '🤔', '😴'
-];
-
+        '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
+        '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
+        '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩',
+        '🥳', '👍', '🙏', '😢', '🎉', '💯', '❤️', '🔥', '✨', '🎯',
+        '🤔', '😴'
+    ];
 
     emojis.forEach(emoji => {
         const emojiElement = document.createElement('div');
         emojiElement.className = 'emoji-item';
         emojiElement.textContent = emoji;
         emojiElement.addEventListener('click', function() {
-            document.getElementById('message').value += emoji;
-            document.getElementById('emoji-panel').style.display = 'none';
+            if (messageInput) {
+                messageInput.value += emoji;
+                emojiPanel.style.display = 'none';
+                messageInput.focus();
+            }
         });
         emojiPanel.appendChild(emojiElement);
     });
     
-    // 滚动到聊天底部
-    const chatBox = document.getElementById('chat-box');
-    if (chatBox) {
-        chatBox.scrollTop = chatBox.scrollHeight;
-    }
-});
-
-
+    emojiPanel.setAttribute('data-initialized', 'true');
+}
+    
 // -------------------- 贴纸面板 --------------------
 // 切换贴纸面板
 function toggleStickerPanel() {
-    const panel = document.getElementById('sticker-panel');
-    panel.style.display = panel.style.display === 'grid' ? 'none' : 'grid';
+    const stickerPanel = document.getElementById('sticker-panel');
+    const emojiPanel = document.getElementById('emoji-panel');
+    
+    if (stickerPanel.style.display === 'grid') {
+        stickerPanel.style.display = 'none';
+    } else {
+        stickerPanel.style.display = 'grid';
+        if (emojiPanel) {
+            emojiPanel.style.display = 'none';
+        }
+    }
+}
+
+// 显示更多工具
+function showMoreTools() {
+    // 这里可以添加更多工具的功能
+    alert('更多工具功能待开发');
+    // 例如：清空聊天、设置等功能
 }
 
 // 初始化贴纸面板
-document.addEventListener('DOMContentLoaded', function() {
+function initializeStickerPanel() {
     const stickerPanel = document.getElementById('sticker-panel');
+    if (!stickerPanel || stickerPanel.hasAttribute('data-initialized')) return;
+    
     const stickers = ['xz.gif', 'xt.gif', 'xh.png', 'bb.gif', 'dc.gif', 'fx.gif', 'hh.gif', 'wj.gif'];
 
     stickers.forEach(file => {
@@ -1601,24 +1897,77 @@ document.addEventListener('DOMContentLoaded', function() {
         img.src = 'stickers/' + file;
         img.className = 'sticker-img';
         img.addEventListener('click', function() {
-            const messageInput = document.getElementById('message');
-            // 发送贴纸格式消息
-            messageInput.value = `[sticker:${file}]`;
-            
-            // 自动发送
-            const chatForm = document.getElementById('chat-form');
-            if (chatForm) {
-                chatForm.dispatchEvent(new Event('submit'));
+            if (messageInput) {
+                messageInput.value = `[sticker:${file}]`;
+                
+                // 自动发送
+                if (chatForm) {
+                    chatForm.dispatchEvent(new Event('submit'));
+                }
+                
+                stickerPanel.style.display = 'none';
             }
-            
-            stickerPanel.style.display = 'none';
         });
         stickerPanel.appendChild(img);
     });
+    
+    stickerPanel.setAttribute('data-initialized', 'true');
+}
+
+
+// ==================== 文件上传处理 ====================
+// 文件上传处理
+function setupFileUpload() {
+    const fileInput = document.getElementById('file-input');
+    if (fileInput && !fileInput.hasAttribute('data-listener-added')) {
+        fileInput.setAttribute('data-listener-added', 'true');
+        fileInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                document.getElementById('upload-form').submit();
+            }
+        });
+    }
+}
+
+
+// 确保文件上传表单有正确的事件监听
+document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.getElementById('file-input');
+    if (fileInput && !fileInput.hasAttribute('data-listener-added')) {
+        fileInput.setAttribute('data-listener-added', 'true');
+        fileInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                document.getElementById('upload-form').submit();
+            }
+        });
+    }
 });
 
+// 点击外部关闭面板
+function setupPanelCloseHandlers() {
+    document.addEventListener('click', function(e) {
+        const emojiPanel = document.getElementById('emoji-panel');
+        const stickerPanel = document.getElementById('sticker-panel');
+        
+        // 如果点击的不是表情相关元素，关闭表情面板
+        if (emojiPanel && emojiPanel.style.display === 'grid' && 
+            !e.target.closest('#emoji-panel') && 
+            !e.target.closest('.chat-input-action.clickable:nth-child(2)')) {
+            emojiPanel.style.display = 'none';
+        }
+        
+        // 如果点击的不是贴纸相关元素，关闭贴纸面板
+        if (stickerPanel && stickerPanel.style.display === 'grid' && 
+            !e.target.closest('#sticker-panel') && 
+            !e.target.closest('.chat-input-action.clickable:nth-child(3)')) {
+            stickerPanel.style.display = 'none';
+        }
+    });
+}
 
-// 共享文件
+
+// -------------- 共享文件--------------------------
+
 // 点击按钮显示共享文件并加载列表
 function openSharedFiles() {
     const dialog = document.getElementById('shared-files-dialog');
@@ -1631,40 +1980,151 @@ function closeSharedFiles() {
     document.getElementById('shared-files-dialog').style.display = 'none';
 }
 
-// 加载共享文件列表并显示在左侧栏菜单中
+// 加载服务器本地文件列表
 async function loadSharedFiles() {
     try {
-        const res = await fetch('api.php?action=get_messages');
-        const data = await res.json();
-
         const list = document.getElementById('shared-files-list');
         list.innerHTML = ''; // 先清空
 
-        if (data.status === 'ok' && Array.isArray(data.messages)) {
-            // 过滤出 type 为 file 的消息
-            const files = data.messages.filter(m => m.type === 'file');
+        // 获取服务器本地文件列表
+        const localRes = await fetch('api.php?action=get_local_files');
+        const localData = await localRes.json();
+
+        // 获取数据库中的文件信息以显示上传者和消息ID
+        const dbRes = await fetch('api.php?action=get_messages');
+        const dbData = await dbRes.json();
+
+        // 创建文件名到消息信息的映射
+        const fileInfoMap = {};
+        if (dbData.status === 'ok' && Array.isArray(dbData.messages)) {
+            dbData.messages.filter(m => m.type === 'file').forEach(f => {
+                try {
+                    const msgData = JSON.parse(f.message);
+                    if (msgData.saved_name) {
+                        fileInfoMap[msgData.saved_name] = {
+                            username: f.username,
+                            message_id: f.id,
+                            filename: msgData.filename
+                        };
+                    }
+                } catch(e) {}
+            });
+        }
+
+        if (localData.status === 'ok' && Array.isArray(localData.files)) {
+            const files = localData.files;
 
             if (files.length === 0) {
                 list.innerHTML = '<li>暂无共享文件</li>';
             } else {
-                files.forEach(f => {
-                    let msgData = {};
-                    try {
-                        msgData = JSON.parse(f.message);
-                    } catch(e){}
+                files.forEach(file => {
+                    // 从文件名中提取原始文件名（移除时间戳前缀）
+                    const originalName = file.replace(/^\d+_/, '');
+                    const fileInfo = fileInfoMap[file] || { username: '未知用户' };
+                    
+                    const li = document.createElement('li');
+                    li.style.display = 'flex';
+                    li.style.justifyContent = 'space-between';
+                    li.style.alignItems = 'center';
+                    li.style.marginBottom = '10px';
+                    li.style.padding = '8px';
+                    li.style.borderBottom = '1px solid #eee';
 
-                    if (msgData.saved_name && msgData.filename) {
-                        const li = document.createElement('li');
-                        li.style.display = 'flex';
-                        li.style.justifyContent = 'space-between';
-                        li.style.alignItems = 'center';
-                        li.style.marginBottom = '5px';
-                        li.innerHTML = `
-                            <a href="uploads/${encodeURIComponent(msgData.saved_name)}" download>${msgData.filename}</a>
-                            <span style="font-size:11px;color:#888;">(${f.username})</span>
-                        `;
-                        list.appendChild(li);
+                    const fileContent = document.createElement('div');
+                    fileContent.style.flex = '1';
+                    
+                    const link = document.createElement('a');
+                    link.href = `uploads/${encodeURIComponent(file)}`;
+                    link.download = originalName;
+                    link.textContent = originalName;
+                    link.style.fontWeight = 'bold';
+                    link.style.textDecoration = 'none';
+                    link.style.color = '#333';
+                    
+                    const metaInfo = document.createElement('div');
+                    metaInfo.style.fontSize = '11px';
+                    metaInfo.style.color = '#888';
+                    metaInfo.textContent = `上传者: ${fileInfo.username}`;
+                    
+                    fileContent.appendChild(link);
+                    fileContent.appendChild(metaInfo);
+                    
+                    li.appendChild(fileContent);
+
+                    // 删除按钮（仅管理员显示）
+                    if (role === 'admin') {
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.textContent = '删除';
+                        deleteBtn.style.background = '#f44336';
+                        deleteBtn.style.color = 'white';
+                        deleteBtn.style.border = 'none';
+                        deleteBtn.style.padding = '4px 8px';
+                        deleteBtn.style.borderRadius = '3px';
+                        deleteBtn.style.cursor = 'pointer';
+                        deleteBtn.style.marginLeft = '10px';
+                        deleteBtn.style.fontSize = '12px';
+                        
+                        deleteBtn.onclick = async () => {
+                            if (confirm(`确定删除文件 "${originalName}" 吗？`)) {
+                                try {
+                                    // 如果数据库中有记录，使用原有的删除接口
+                                    if (fileInfo.message_id) {
+                                        const deleteRes = await fetch('api.php?action=delete_message_admin', {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/x-www-form-urlencoded'
+                                            },
+                                            body: `message_id=${fileInfo.message_id}`
+                                        });
+                                        
+                                        const deleteData = await deleteRes.json();
+                                        
+                                        if (deleteData.status === 'ok') {
+                                            // 从前端移除列表项
+                                            li.remove();
+                                            
+                                            // 如果删除了所有文件，显示提示
+                                            if (list.children.length === 0) {
+                                                list.innerHTML = '<li>暂无共享文件</li>';
+                                            }
+                                        } else {
+                                            alert('文件删除失败: ' + deleteData.message);
+                                        }
+                                    } else {
+                                        // 如果数据库中没有记录，只删除物理文件
+                                        const formData = new FormData();
+                                        formData.append('filename', file);
+                                        
+                                        const deleteRes = await fetch('api.php?action=delete_local_file', {
+                                            method: 'POST',
+                                            body: formData
+                                        });
+                                        
+                                        const deleteData = await deleteRes.json();
+                                        
+                                        if (deleteData.status === 'ok') {
+                                            // 从前端移除列表项
+                                            li.remove();
+                                            
+                                            // 如果删除了所有文件，显示提示
+                                            if (list.children.length === 0) {
+                                                list.innerHTML = '<li>暂无共享文件</li>';
+                                            }
+                                        } else {
+                                            alert('文件删除失败: ' + deleteData.message);
+                                        }
+                                    }
+                                } catch (error) {
+                                    console.error('删除文件错误:', error);
+                                    alert('删除文件时发生错误');
+                                }
+                            }
+                        };
+                        
+                        li.appendChild(deleteBtn);
                     }
+
+                    list.appendChild(li);
                 });
             }
         } else {
@@ -1678,84 +2138,7 @@ async function loadSharedFiles() {
     }
 }
 
-// 管理员删除共享文件
-async function loadSharedFiles() {
-    try {
-        const res = await fetch('api.php?action=get_messages');
-        const data = await res.json();
-        const list = document.getElementById('shared-files-list');
-        list.innerHTML = '';
-
-        if (data.status === 'ok' && data.messages) {
-            const files = data.messages.filter(m => m.type === 'file');
-
-            if (files.length === 0) {
-                list.innerHTML = '<li>暂无共享文件</li>';
-            } else {
-                files.forEach(f => {
-                    let msgData = {};
-                    try { msgData = JSON.parse(f.message); } catch(e){}
-
-                    if (msgData.saved_name && msgData.filename) {
-                        const li = document.createElement('li');
-                        li.style.display = 'flex';
-                        li.style.justifyContent = 'space-between';
-                        li.style.alignItems = 'center';
-                        li.style.marginBottom = '5px';
-
-                        const link = document.createElement('a');
-                        link.href = `uploads/${encodeURIComponent(msgData.saved_name)}`;
-                        link.download = msgData.filename;
-                        link.textContent = msgData.filename;
-
-                        const info = document.createElement('span');
-                        info.style.fontSize = '11px';
-                        info.style.color = '#888';
-                        info.textContent = `(${f.username})`;
-
-                        li.appendChild(link);
-                        li.appendChild(info);
-
-                        // 删除按钮（仅管理员显示）
-                        if (role === 'admin') {
-                            const delBtn = document.createElement('button');
-                            delBtn.textContent = '删除';
-                            delBtn.style.marginLeft = '10px';
-                            delBtn.style.fontSize = '11px';
-                            delBtn.style.cursor = 'pointer';
-                            delBtn.addEventListener('click', async () => {
-                                if (confirm(`确定删除文件 "${msgData.filename}" 吗？`)) {
-                                    // 使用 POST 并传 message_id
-                                    const delRes = await fetch('api.php?action=delete_message_admin', {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/x-www-form-urlencoded'
-                                        },
-                                        body: `message_id=${f.id}`
-                                    });
-                                    const delData = await delRes.json();
-                                    if (delData.status === 'ok') {
-                                        li.remove(); // 前端移除
-                                    } else {
-                                        alert('删除失败: ' + delData.message);
-                                    }
-                                }
-                            });
-                            li.appendChild(delBtn);
-                        }
-
-                        list.appendChild(li);
-                    }
-                });
-            }
-        }
-
-    } catch (err) {
-        console.error('加载共享文件失败:', err);
-    }
-}
-
-// 密码修改
+// --------------- 密码修改 ---------------------------------------
 // 切换密码菜单显示
 function toggleChangePasswordMenu() {
     const menu = document.getElementById('change-password-menu');
@@ -1800,6 +2183,49 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('修改密码失败，请稍后重试');
         }
     });
+});
+
+// 支持Shift+Enter换行和自动调整高度
+document.addEventListener('DOMContentLoaded', function() {
+    const messageInput = document.getElementById('message');
+    const chatForm = document.getElementById('chat-form');
+    
+    if (messageInput) {
+        // 自动调整文本区域高度
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+            
+            // 限制最大高度
+            if (this.scrollHeight > 120) {
+                this.style.overflowY = 'auto';
+            } else {
+                this.style.overflowY = 'hidden';
+            }
+        });
+        
+        // 支持Shift+Enter换行
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                if (e.shiftKey) {
+                    // Shift+Enter - 插入换行
+                    return;
+                } else {
+                    // Enter - 提交表单
+                    e.preventDefault();
+                    if (chatForm) {
+                        chatForm.dispatchEvent(new Event('submit'));
+                    }
+                }
+            }
+        });
+        
+        // 初始化高度
+        setTimeout(() => {
+            messageInput.style.height = 'auto';
+            messageInput.style.height = (messageInput.scrollHeight) + 'px';
+        }, 100);
+    }
 });
 
 // ==================== 兼容性支持 ====================

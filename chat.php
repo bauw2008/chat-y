@@ -32,32 +32,112 @@ if (!isset($_SESSION['username'])) {
     exit;
 }
 
+// 会话验证 - 检查当前会话是否有效
+try {
+    $db = new PDO("sqlite:$dbFile");
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+    $stmt = $db->prepare("SELECT session_id FROM users WHERE username = :username");
+    $stmt->execute([':username' => $_SESSION['username']]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($user && $user['session_id'] !== session_id()) {
+        // 会话无效，说明在别处登录了
+        session_destroy();
+        header("Location: login.php?error=账号已在其他地方登录");
+        exit;
+    }
+} catch (Exception $e) {
+    // 处理数据库错误，继续执行
+    error_log("会话验证错误: " . $e->getMessage());
+}
+
 // 设置用户信息
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? 'user';
 
+// 处理公告发布
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['announcement']) && $role === 'admin') {
+    $announcement = trim($_POST['announcement']);
+    if (!empty($announcement)) {
+        try {
+            $stmt = $db->prepare("INSERT OR REPLACE INTO announcements (id, content, created_by, created_at) VALUES (1, :content, :user, datetime('now'))");
+            $stmt->execute([
+                ':content' => $announcement,
+                ':user' => $username
+            ]);
+        } catch (Exception $e) {
+            // 如果announcements表不存在，创建它
+            if (strpos($e->getMessage(), 'no such table') !== false) {
+                $db->exec("CREATE TABLE announcements (id INTEGER PRIMARY KEY, content TEXT, created_by TEXT, created_at DATETIME)");
+                $stmt = $db->prepare("INSERT INTO announcements (id, content, created_by, created_at) VALUES (1, :content, :user, datetime('now'))");
+                $stmt->execute([
+                    ':content' => $announcement,
+                    ':user' => $username
+                ]);
+            }
+        }
+    }
+    header("Location: chat.php");
+    exit;
+}
 
-// 获取共享文件列表
-$sharedFiles = [];
+// 处理公告删除
+if (isset($_GET['delete_announcement']) && $role === 'admin') {
+    try {
+        $stmt = $db->prepare("DELETE FROM announcements WHERE id = 1");
+        $stmt->execute();
+    } catch (Exception $e) {
+        // 表不存在时忽略错误
+    }
+    header("Location: chat.php");
+    exit;
+}
+
+// 获取当前公告
+$currentAnnouncement = '';
 try {
-    $stmt = $db->prepare("SELECT id, username, message, created_at FROM messages WHERE type='file' ORDER BY created_at DESC");
+    $stmt = $db->prepare("SELECT content FROM announcements WHERE id = 1");
     $stmt->execute();
-    $files = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    foreach ($files as $f) {
-        $msgData = json_decode($f['message'], true);
-        if ($msgData && isset($msgData['filename'], $msgData['saved_name'])) {
-            $sharedFiles[] = [
-                'id' => $f['id'],
-                'username' => $f['username'],
-                'filename' => $msgData['filename'],
-                'saved_name' => $msgData['saved_name'],
-                'created_at' => $f['created_at']
+    $announcement = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($announcement) {
+        $currentAnnouncement = htmlspecialchars($announcement['content']);
+    }
+} catch (Exception $e) {
+    // 表不存在时忽略
+}
+
+// 获取服务器本地uploads目录的文件列表
+$localFiles = [];
+$uploadDir = __DIR__ . '/uploads/';
+
+// 确保上传目录存在
+if (!file_exists($uploadDir)) {
+    mkdir($uploadDir, 0777, true);
+}
+
+// 读取uploads目录中的所有文件
+if (file_exists($uploadDir)) {
+    $files = scandir($uploadDir);
+    foreach ($files as $file) {
+        if ($file !== '.' && $file !== '..' && !is_dir($uploadDir . $file)) {
+            // 从文件名中提取原始文件名（移除时间戳前缀）
+            $originalName = preg_replace('/^\d+_/', '', $file);
+            
+            $localFiles[] = [
+                'filename' => $originalName,
+                'saved_name' => $file,
+                'filepath' => $uploadDir . $file,
+                'filesize' => filesize($uploadDir . $file),
+                'filetime' => filemtime($uploadDir . $file)
             ];
         }
     }
-} catch (Exception $e) {
-    $sharedFiles = [];
+    
+    // 按修改时间倒序排列
+    usort($localFiles, function($a, $b) {
+        return $b['filetime'] - $a['filetime'];
+    });
 }
 
 // 更新最后活动时间
@@ -125,17 +205,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
   <link rel="stylesheet" href="assets/css/chat.css">
 </head>
 <body>
-    <!-- 遮罩层 -->
-    <div class="side-menu-overlay" onclick="closeSideMenu()"></div>
-    
-    <!-- 菜单按钮 -->
-    <button class="menu-toggle" onclick="toggleSideMenu()">☰</button>
-
     <div class="chat-container">
         <div class="user-list">
             <h3 class="user-list-title">
                 聊天室
-                <button class="close-side-menu" onclick="closeSideMenu()">×</button>
+               <!--  <button class="close-side-menu" onclick="closeSideMenu()">×</button> -->
             </h3>
             
             <!-- 用户信息区域 -->
@@ -153,16 +227,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                         <button class="profile-btn" onclick="toggleAdminPanel()">
                             <i>⚙️</i> 管理功能
                         </button>
-					<?php endif; ?>
-					
-					<button class="profile-btn" onclick="openSharedFiles()">
-							<i>📂</i> 共享文件
-					</button>
-					
-					<button class="profile-btn" onclick="toggleChangePasswordMenu()">
-						    <i>🔑</i> 修改密码
-					</button>
-	
+                    <?php endif; ?>
+                    
+                    <button class="profile-btn" onclick="openSharedFiles()">
+                            <i>📂</i> 共享文件
+                    </button>
+                    
+                    <button class="profile-btn" onclick="toggleChangePasswordMenu()">
+                            <i>🔑</i> 修改密码
+                    </button>
+
                     <button class="profile-btn logout" onclick="logout()">
                             <i>🔓</i> 退出登录
                     </button>
@@ -173,6 +247,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                 <div id="admin-panel" class="admin-panel">
                     <button id="clear-chat" class="admin-btn">清理聊天记录</button>
                     <button id="manage-users" class="admin-btn">管理用户</button>
+                    <button id="manage-announcement" class="admin-btn" onclick="toggleAnnouncementForm()">发布公告</button>
+                    
+                    <!-- 公告表单 -->
+                    <div id="announcement-form" class="announcement-form">
+                        <form method="post">
+                            <textarea name="announcement" class="announcement-input" placeholder="请输入公告内容（支持表情）..." rows="3"><?php echo $currentAnnouncement; ?></textarea>
+                            <button type="submit" class="announcement-submit">发布公告</button>
+                            <?php if (!empty($currentAnnouncement)): ?>
+                            <button type="button" class="announcement-btn" onclick="if(confirm('确定要删除公告吗？')) window.location.href='?delete_announcement=1'">删除公告</button>
+                            <?php endif; ?>
+                        </form>
+                    </div>
+                    
                     <div id="user-management" class="user-management">
                         <select id="user-select" class="user-select"></select>
                         <button id="delete-user" class="admin-btn delete-btn">删除用户</button>
@@ -180,7 +267,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                 </div>
                 <?php endif; ?>
             </div>
-			
+            
 			<!-- 共享文件对话框 -->
 			<div class="dialog-overlay" id="shared-files-dialog">
 				<div class="dialog-box">
@@ -190,22 +277,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
 					</div>
 					<div class="dialog-content">
 						<ul id="shared-files-list">
-							<li>暂无共享文件</li>
+							<?php if (empty($localFiles)): ?>
+								<li>暂无共享文件</li>
+							<?php else: ?>
+								<?php foreach ($localFiles as $file): ?>
+								<li style="margin-bottom: 10px; padding: 5px; border-bottom: 1px solid #eee;">
+									<a href="uploads/<?php echo urlencode($file['saved_name']); ?>" 
+									   download="<?php echo htmlspecialchars($file['filename']); ?>">
+										<?php echo htmlspecialchars($file['filename']); ?>
+									</a>
+								</li>
+								<?php endforeach; ?>
+							<?php endif; ?>
 						</ul>
 					</div>
 				</div>
 			</div>
 
-			<!-- 修改密码弹窗 -->
-			<div id="change-password-menu" class="dropdown-menu" style="display: none;">
-				<form id="change-password-form">
-					<input type="password" id="old-password" name="old_password" placeholder="旧密码" required autocomplete="current-password"><br>
-					<input type="password" id="new-password" name="new_password" placeholder="新密码" required autocomplete="new-password"><br>
-					<input type="password" id="confirm-password" name="confirm_password" placeholder="确认新密码" required autocomplete="new-password"><br>
-					<button type="submit">提交修改</button>
-				</form>
-			</div>
-
+            <!-- 修改密码弹窗 -->
+            <div id="change-password-menu" class="dropdown-menu" style="display: none;">
+                <form id="change-password-form">
+                    <input type="password" id="old-password" name="old_password" placeholder="旧密码" required autocomplete="current-password"><br>
+                    <input type="password" id="new-password" name="new_password" placeholder="新密码" required autocomplete="new-password"><br>
+                    <input type="password" id="confirm-password" name="confirm_password" placeholder="确认新密码" required autocomplete="new-password"><br>
+                    <button type="submit">提交修改</button>
+                </form>
+            </div>
 
             <!-- 在线用户列表 -->
             <div class="online-users">
@@ -214,69 +311,105 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                     <!-- 用户列表将通过JavaScript动态加载 -->
                 </div>
             </div>
-        </div>
+        </div> <!-- 关闭user-list div -->
 
         <div class="chat-area">
+            <!-- 公告区域 -->
+            <?php if (!empty($currentAnnouncement)): ?>
+            <div class="announcement-container">
+                <div class="announcement-scroll">
+                    <span class="announcement-icon">📢</span>
+                    <span class="announcement-content"><?php echo $currentAnnouncement; ?></span>
+                </div>
+                <?php if ($role === 'admin'): ?>
+                <div class="announcement-controls">
+                    <!-- <button class="announcement-btn" onclick="toggleAnnouncementForm()">编辑</button> -->
+                    <button class="announcement-btn" onclick="if(confirm('确定要删除公告吗？')) window.location.href='?delete_announcement=1'">删除</button>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+            
             <!-- 聊天内容区域 -->
             <div id="chat-box" class="chat-box">
                 <!-- 消息将通过JavaScript动态加载 -->
             </div>
-            
-            <!-- 工具栏区域 -->
-            <div class="toolbar-container">
-                <div class="toolbar">
-                    <form id="upload-form" action="chat.php" method="post" enctype="multipart/form-data" style="display: none;">
-                        <input type="file" name="file-input" id="file-input" required>
-                    </form>
+           
+            <!-- 输入面板 -->
+            <div class="input-container">
+                <div class="chat-input-panel">
+                    <!-- 工具栏区域 -->
+                    <div class="chat-input-actions">
+                        <div class="chat-input-action clickable">
+                            <div class="chat-icon">📎</div>
+                            <div class="chat-text">上传</div>
+                        </div>
+                        <div class="chat-input-action clickable">
+                            <div class="chat-icon">😊</div>
+                            <div class="chat-text">表情</div>
+                        </div>
+                        <div class="chat-input-action clickable">
+                            <div class="chat-icon">🖼️</div>
+                            <div class="chat-text">贴纸</div>
+                        </div>
+                        <div class="chat-input-action clickable">
+                            <div class="chat-icon">➕</div>
+                            <div class="chat-text">更多</div>
+                        </div>
+						    <!-- 添加菜单按钮 -->
+						<div class="chat-input-action clickable" id="menu-toggle">
+							<div class="chat-icon">☰</div>
+							<div class="chat-text">菜单</div>
+						</div>
+                    </div>
                     
-                    <button type="button" class="toolbar-btn" onclick="document.getElementById('file-input').click();" title="上传文件">
-                        <span class="toolbar-icon">📎</span>
-                        <span class="toolbar-label">上传</span>
-                    </button>
-                    
-                    <button type="button" class="toolbar-btn" onclick="toggleEmojiPanel()" title="表情">
-                        <span class="toolbar-icon">😊</span>
-                        <span class="toolbar-label">表情</span>
-                    </button>
-					
-					<button type="button" class="toolbar-btn" onclick="toggleStickerPanel()" title="贴纸">
-						<span class="toolbar-icon">🖼️</span>
-						<span class="toolbar-label">贴纸</span>
-					</button>
+                    <!-- 输入区域 -->
+                    <div class="chat-input-panel-inner">
+                        <form id="chat-form" class="chat-form">
+                            <textarea id="message" name="message" class="chat-input" placeholder="输入消息... (Shift+Enter 换行)" rows="1" required></textarea>
+                            <button type="submit" class="chat-input-send">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                                </svg>
+                            </button>
+                        </form>
+                    </div>
+                </div>               
 
-                    
-                    <!-- 可以在这里添加更多工具栏按钮 -->
-                    <button type="button" class="toolbar-btn" onclick="showMoreTools()" title="更多工具">
-                        <span class="toolbar-icon">➕</span>
-                        <span class="toolbar-label">更多</span>
-                    </button>
-                </div>
-                
-                <!-- Emoji面板 -->
+				<!-- 侧滑菜单 -->
+				<div class="user-list">
+					<!-- 菜单内容 -->
+				</div>
+
+				<!-- 遮罩层 -->
+				<div class="side-menu-overlay" onclick="closeSideMenu()"></div>
+			
+                <!-- 表情和贴纸面板 -->
                 <div id="emoji-panel" class="emoji-panel">
                     <!-- Emoji通过JavaScript动态加载 -->
                 </div>
-				
-				<!-- 贴纸面板 -->
-				<div id="sticker-panel" class="emoji-panel"
-					<!-- 贴纸图片通过JavaScript动态加载 -->
-				</div>
-
+                
+                <div id="sticker-panel" class="sticker-panel">
+                    <!-- 贴纸图片通过JavaScript动态加载 -->
+                </div>
+             
+                <!-- 隐藏的文件上传表单 -->
+                <form id="upload-form" action="chat.php" method="post" enctype="multipart/form-data" style="display: none;">
+                    <input type="file" name="file-input" id="file-input" required>
+                </form>
             </div>
-            
-            <!-- 输入区域 -->
-			<form id="chat-form" class="chat-form">
-				<input type="text" id="message" name="message" class="chat-input" placeholder="输入消息..." required>
-				<button type="submit" class="send-btn">发送</button>
-			</form>
-			
         </div>
     </div>
-
 <script>
 // 定义全局变量
 const username = "<?php echo $username; ?>";
 const role = "<?php echo $role; ?>";
+
+// 点击遮罩层关闭菜单
+document.querySelector('.side-menu-overlay').addEventListener('click', closeSideMenu);
+
+// 绑定菜单按钮的点击事件
+document.getElementById('menu-toggle').addEventListener('click', toggleSideMenu);
 
 // 侧边菜单功能
 function toggleSideMenu() {
@@ -295,12 +428,10 @@ function logout() {
     }
 }
 
-// 切换管理员面板
-function toggleAdminPanel() {
-    const adminPanel = document.getElementById('admin-panel');
-    if (adminPanel) {
-        adminPanel.style.display = adminPanel.style.display === 'block' ? 'none' : 'block';
-    }
+// 切换公告表单
+function toggleAnnouncementForm() {
+    const form = document.getElementById('announcement-form');
+    form.style.display = form.style.display === 'block' ? 'none' : 'block';
 }
 
 // 显示更多工具
@@ -314,9 +445,6 @@ document.getElementById('file-input').addEventListener('change', function() {
         document.getElementById('upload-form').submit();
     }
 });
-
-// 点击遮罩层关闭菜单
-document.querySelector('.side-menu-overlay').addEventListener('click', closeSideMenu);
 
 </script>
 

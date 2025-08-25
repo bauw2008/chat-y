@@ -28,9 +28,15 @@ if (!isset($_SESSION['username'])) {
 }
 
 $me = $_SESSION['username'];
-$targetUser = $_GET['user'] ?? '';
+
+// 修复：优先从GET参数获取，如果没有则从SESSION中获取
+$targetUser = $_GET['user'] ?? $_SESSION['private_chat_target'] ?? '';
+
 if (!$targetUser) die("请选择聊天对象");
 if ($targetUser === $me) die("不能与自己私聊");
+
+// 修复：保存目标用户到SESSION，供后续使用
+$_SESSION['private_chat_target'] = $targetUser;
 
 // 检查目标用户是否存在
 try {
@@ -48,8 +54,6 @@ $stmt->execute([':u'=>$me]);
 // 标记消息已读
 $stmt = $db->prepare("UPDATE private_messages SET is_read=1 WHERE receiver=:me AND sender=:sender AND is_read=0");
 $stmt->execute([':me'=>$me,':sender'=>$targetUser]);
-
-$emojis = ["😀","😂","😎","😍","😭","😡","😱","🤔","👍","🎉","💖","😴","😜","🤯","🥳","🙈","🐱","🐶","🌹","🔥"];
 
 // 文件上传处理
 $uploadError = '';
@@ -84,9 +88,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
             $stmt->execute([
                 ':sender'=>$me,
                 ':receiver'=>$targetUser,
-                ':msg'=>$fileInfo, // 使用JSON格式
+                ':msg'=>$fileInfo,
                 ':type'=>$type
             ]);
+            
+            // 修复：重定向时使用SESSION中的目标用户
             header("Location: private_chat.php?user=".urlencode($targetUser));
             exit;
         } else {
@@ -97,6 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
     }
 }
 ?>
+
 
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -117,85 +124,96 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
   </div>
 
   <div class="chat-area">
-    <div id="chat-box" class="chat-box"></div>
-
-    <div class="toolbar-container">
-      <div class="toolbar">
-        <form id="upload-form" method="post" enctype="multipart/form-data" style="display:none;">
-          <input type="file" name="file-input" id="file-input">
-        </form>
-        <button type="button" class="toolbar-btn" onclick="document.getElementById('file-input').click();" title="上传文件">
-          <span class="toolbar-icon">📎</span><span class="toolbar-label">上传</span>
-        </button>
-        <button type="button" class="toolbar-btn" onclick="toggleEmojiPanel()" title="表情">
-          <span class="toolbar-icon">😊</span><span class="toolbar-label">表情</span>
-        </button>
-        <button type="button" class="toolbar-btn" onclick="deletePrivateChatHistory()" title="清空历史">
-          <span class="toolbar-icon">🧹</span><span class="toolbar-label">清空历史</span>
-        </button>
-        <button type="button" class="toolbar-btn" onclick="showMoreTools()" title="更多工具">
-          <span class="toolbar-icon">➕</span><span class="toolbar-label">更多</span>
-        </button>
-      </div>
-      <div id="emoji-panel" class="emoji-panel"></div>
+    <!-- 聊天内容区域 -->
+    <div id="chat-box" class="chat-box">
+        <!-- 消息将通过JavaScript动态加载 -->
     </div>
-
-    <form id="chat-form" class="chat-form">
-      <input type="hidden" id="target-user" value="<?= htmlspecialchars($targetUser) ?>">
-      <input type="text" id="message" class="chat-input" placeholder="输入消息..." required>
-      <button type="submit" class="send-btn">发送</button>
-    </form>
+		
+    <!-- 输入面板 -->
+    <div class="input-container">
+        <div class="chat-input-panel">
+            <!-- 工具栏区域 -->
+                    <div class="chat-input-actions">
+                        <div class="chat-input-action clickable">
+                            <div class="chat-icon">📎</div>
+                            <div class="chat-text">上传</div>
+                        </div>
+                        <div class="chat-input-action clickable">
+                            <div class="chat-icon">😊</div>
+                            <div class="chat-text">表情</div>
+                        </div>
+                        <div class="chat-input-action clickable">
+                            <div class="chat-icon">🖼️</div>
+                            <div class="chat-text">贴纸</div>
+                        </div>
+						<div class="chat-input-action clickable">
+                            <div class="chat-icon">🧹</div>
+                            <div class="chat-text">清空</div>
+                        </div>						
+                        <div class="chat-input-action clickable">
+                            <div class="chat-icon">➕</div>
+                            <div class="chat-text">更多</div>
+                        </div>
+                    </div>
+            
+            <!-- 输入区域 -->
+            <div class="chat-input-panel-inner">
+                <form id="chat-form" class="chat-form">
+                    <input type="hidden" id="target-user" value="<?= htmlspecialchars($targetUser) ?>">
+                    <textarea id="message" name="message" class="chat-input" placeholder="输入消息... (Shift+Enter 换行)" rows="1" required></textarea>
+                    <button type="submit" class="chat-input-send">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                        </svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 表情和贴纸面板 -->
+        <div id="emoji-panel" class="emoji-panel">
+            <!-- Emoji通过JavaScript动态加载 -->
+        </div>
+        
+        <div id="sticker-panel" class="sticker-panel">
+            <!-- 贴纸图片通过JavaScript动态加载 -->
+        </div>	
+		
+        <!-- 更多工具菜单 -->
+        <div id="private-more-tools" class="dropdown-menu"">
+            <!-- 贴纸图片通过JavaScript动态加载 -->
+        </div>
+        
+		<!-- 隐藏的文件上传表单 -->
+		<form id="upload-form" action="private_chat.php" method="post" enctype="multipart/form-data" style="display: none;">
+			<input type="file" name="file-input" id="file-input" required>
+		</form>
+    </div>
   </div>
 </div>
 
 <script>
-// 定义全局变量（在chat.js中使用）
+// 定义全局变量
 const username = "<?= htmlspecialchars($me) ?>";
 const role = "<?= $_SESSION['role'] ?? 'user' ?>";
+const targetUser = "<?= htmlspecialchars($targetUser) ?>";
 
-// 私聊页面特定的初始化代码
-document.addEventListener('DOMContentLoaded', function() {
-    // 设置私聊特定的配置
-    window.chatConfig = {
-        isPrivateChat: true,
-        currentUser: "<?= htmlspecialchars($me) ?>",
-        targetUser: "<?= htmlspecialchars($targetUser) ?>",
-        emojis: <?= json_encode($emojis) ?>
-    };
-    
-    // 初始化私聊功能
-    if (typeof initPrivateChat === 'function') {
-        initPrivateChat();
+// 设置私聊配置
+window.chatConfig = {
+    isPrivateChat: true,
+    currentUser: username,
+    targetUser: targetUser,
+};
+
+// 文件上传自动提交
+document.getElementById('file-input').addEventListener('change', function() {
+    console.log('文件选择变化');
+    if (this.files.length > 0) {
+        console.log('提交上传表单');
+        document.getElementById('upload-form').submit();
     }
-    
-    // 文件上传处理
-    document.getElementById('file-input').addEventListener('change', function() {
-        if (this.files.length > 0) {
-            document.getElementById('upload-form').submit();
-        }
-    });
 });
 
-// 私聊页面特有的函数
-function toggleEmojiPanel() {
-    const panel = document.getElementById('emoji-panel');
-    panel.style.display = panel.style.display === 'grid' ? 'none' : 'grid';
-}
-
-function showMoreTools() {
-    alert('功能待开发');
-}
-
-function deletePrivateChatHistory() {
-    if (!window.chatConfig || !window.chatConfig.isPrivateChat) return;
-    
-    if (!confirm(`确定删除与 ${window.chatConfig.targetUser} 的所有聊天记录吗？`)) return;
-    
-    // 调用chat.js中的函数
-    if (typeof deletePrivateChatHistory === 'function') {
-        deletePrivateChatHistory();
-    }
-}
 </script>
 <script src="assets/js/chat.js"></script>
 </body>

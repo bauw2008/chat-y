@@ -31,125 +31,126 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // 登录表单提交
-    loginForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        loginError.textContent = '';
-        
-        const username = document.getElementById('username').value.trim();
-        const password = document.getElementById('password').value.trim();
-        
-        // 表单验证
-        if (!username || !password) {
-            showError(loginError, '用户名和密码不能为空');
-            shakeElement(loginForm);
-            return;
-        }
-        
-        // 显示加载状态
-        const submitBtn = loginForm.querySelector('button[type="submit"]');
-        const originalText = submitBtn.textContent;
-        setButtonLoading(submitBtn, '登录中...');
-        
-        try {
-            const res = await fetch('api.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: `action=login&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
-            });
-            
-            const data = await res.json();
-            
-            if (data.status === 'ok') {
-                // 登录成功
-                showSuccessMessage('登录成功，正在跳转...');
-                setTimeout(() => {
-                    window.location.href = data.redirect || 'chat.php';
-                }, 1000);
-            } else {
-                // 登录失败
-                showError(loginError, data.message || '用户名或密码错误');
-                shakeElement(loginForm);
-            }
-        } catch (err) {
-            console.error('登录错误:', err);
-            showError(loginError, '网络错误或服务器异常');
-            shakeElement(loginForm);
-        } finally {
-            // 恢复按钮状态
-            setButtonNormal(submitBtn, originalText);
-        }
-    });
+// 登录表单提交
+loginForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    loginError.textContent = '';
     
-    // 注册表单提交
-    regForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        regError.textContent = '';
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value.trim();
+    
+    // 表单验证
+    if (!username || !password) {
+        showError(loginError, '用户名和密码不能为空');
+        shakeElement(loginForm);
+        return;
+    }
+    
+    // 显示加载状态
+    const submitBtn = loginForm.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    setButtonLoading(submitBtn, '登录中...');
+    
+    try {
+        // 改为直接提交到 login.php
+        const formData = new FormData();
+        formData.append('username', username);
+        formData.append('password', password);
         
-        const username = document.getElementById('regUsername').value.trim();
-        const password = document.getElementById('regPassword').value.trim();
+        const res = await fetch('login.php', {
+            method: 'POST',
+            body: formData
+        });
         
-        // 表单验证
-        if (!username || !password) {
-            showError(regError, '用户名和密码不能为空');
-            shakeElement(regForm);
-            return;
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            // 登录成功
+            showSuccessMessage('登录成功，正在跳转...');
+            setTimeout(() => {
+                window.location.href = 'chat.php';
+            }, 1000);
+        } else {
+            // 登录失败
+            showError(loginError, data.message || '用户名或密码错误');
+            shakeElement(loginForm);
         }
+    } catch (err) {
+        console.error('登录错误:', err);
+        showError(loginError, '网络错误或服务器异常');
+        shakeElement(loginForm);
+    } finally {
+        // 恢复按钮状态
+        setButtonNormal(submitBtn, originalText);
+    }
+});
+
+// 注册表单提交
+regForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    regError.textContent = '';
+    
+    const username = document.getElementById('regUsername').value.trim();
+    const password = document.getElementById('regPassword').value.trim();
+    
+    // 表单验证
+    if (!username || !password) {
+        showError(regError, '用户名和密码不能为空');
+        shakeElement(regForm);
+        return;
+    }
+    
+    if (username.length < 3) {
+        showError(regError, '用户名至少3个字符');
+        shakeElement(regForm);
+        return;
+    }
+    
+    if (password.length < 3) {
+        showError(regError, '密码至少3个字符');
+        shakeElement(regForm);
+        return;
+    }
+    
+    // 显示加载状态
+    const submitBtn = regForm.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    setButtonLoading(submitBtn, '注册中...');
+    
+    try {
+        // 改为直接提交到 login.php
+        const formData = new FormData();
+        formData.append('reg_username', username);
+        formData.append('reg_password', password);
         
-        if (username.length < 3) {
-            showError(regError, '用户名至少3个字符');
+        const res = await fetch('login.php', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            // 注册成功
+            showSuccessMessage('注册成功，请登录！');
+            setTimeout(() => {
+                registerModal.style.display = 'none';
+                document.getElementById('username').value = username;
+                document.getElementById('password').focus();
+            }, 1500);
+        } else {
+            showError(regError, data.message || '注册失败，请重试');
             shakeElement(regForm);
-            return;
         }
-        
-        if (password.length < 3) {
-            showError(regError, '密码至少3个字符');
-            shakeElement(regForm);
-            return;
-        }
-        
-        // 显示加载状态
-        const submitBtn = regForm.querySelector('button[type="submit"]');
-        const originalText = submitBtn.textContent;
-        setButtonLoading(submitBtn, '注册中...');
-        
-        try {
-            const res = await fetch('api.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: `action=register&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
-            });
-            
-            const data = await res.json();
-            
-            if (data.status === 'success' || data.status === 'ok') {
-                // 注册成功
-                showSuccessMessage('注册成功，请登录！');
-                setTimeout(() => {
-                    registerModal.style.display = 'none';
-                    document.getElementById('username').value = username;
-                    document.getElementById('password').focus();
-                }, 1500);
-            } else if (data.status === 'exists') {
-                showError(regError, '用户名已存在');
-                shakeElement(regForm);
-            } else {
-                showError(regError, data.message || '注册失败，请重试');
-                shakeElement(regForm);
-            }
-        } catch (err) {
-            console.error('注册错误:', err);
-            showError(regError, '网络错误或服务器异常');
-            shakeElement(regForm);
-        } finally {
-            // 恢复按钮状态
-            setButtonNormal(submitBtn, originalText);
-        }
-    });
+    } catch (err) {
+        console.error('注册错误:', err);
+        showError(regError, '网络错误或服务器异常');
+        shakeElement(regForm);
+    } finally {
+        // 恢复按钮状态
+        setButtonNormal(submitBtn, originalText);
+    }
+});
     
     // 自动聚焦用户名输入框
     document.getElementById('username').focus();

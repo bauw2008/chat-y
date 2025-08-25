@@ -1,5 +1,5 @@
 <?php
-// reinit_db.php
+// init_db.php
 header('Content-Type: application/json; charset=utf-8');
 
 $dbFile = __DIR__ . '/data/chat.db';
@@ -24,7 +24,7 @@ try {
     $db = new PDO("sqlite:$dbFile");
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // 用户表（包含 is_online 字段）
+    // 用户表（包含 is_online 和 session_id 字段）
     $db->exec("
         CREATE TABLE users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,6 +33,7 @@ try {
             role TEXT NOT NULL DEFAULT 'user',
             last_active DATETIME,
             is_online INTEGER DEFAULT 0,
+            session_id VARCHAR(255) NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
     ");
