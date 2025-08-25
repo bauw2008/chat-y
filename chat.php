@@ -264,6 +264,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                         <select id="user-select" class="user-select"></select>
                         <button id="delete-user" class="admin-btn delete-btn">删除用户</button>
                     </div>
+					
+					    <!-- 额外的跳转菜单 -->
+					<div class="admin-menu">
+						<a href="api.php" class="admin-btn">接口</a>
+						<a href="check_db.php" class="admin-btn">check</a>
+						<a href="debug.php" class="admin-btn">debug</a>
+						<a href="index.php" class="admin-btn">初始化</a>
+					</div>
                 </div>
                 <?php endif; ?>
             </div>

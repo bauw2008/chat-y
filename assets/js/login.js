@@ -68,7 +68,7 @@ loginForm.addEventListener('submit', async function(e) {
             // 登录成功
             showSuccessMessage('登录成功，正在跳转...');
             setTimeout(() => {
-                window.location.href = 'chat.php';
+                window.location.href = data.redirect || 'chat.php';
             }, 1000);
         } else {
             // 登录失败

@@ -44,17 +44,29 @@ html, body {
   transition: transform 0.3s ease;
   position: relative;
   z-index: 100;
+
+  /* 支持滑动 */
+  max-height: 100vh;        /* 高度不超过视口 */
+  overflow-y: auto;         /* 内容过多显示垂直滚动条 */
+  -webkit-overflow-scrolling: touch; /* 移动端平滑滚动 */
+  /* 隐藏滚动条 */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.user-list::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Edge */
 }
 
 .user-list-title {
-  padding: 20px;
+  padding: 16px; /* 可以适当减小padding让整体更紧凑 */
   display: flex;
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  font-size: 18px;
+  font-size: 16px; /* 缩小字体 */
   font-weight: 600;
   background: rgba(0, 0, 0, 0.1);
+  flex-shrink: 0; /* 保持标题固定，不随滚动移动 */
 }
 
 .close-side-menu {
@@ -155,54 +167,138 @@ html, body {
   background: rgba(231, 76, 60, 1);
 }
 
-/* 管理员面板 */
+/* ==================== 管理员面板 ==================== */
 .admin-panel {
   display: none;
-  padding: 15px;
-  background-color: #f8f9fa;
+  padding: 20px;
+  background-color: #f4f6f8;
   border-radius: 12px;
-  margin-top: 15px;
-  border: 1px solid #e6e9ef;
+  margin-top: 20px;
+  border: 1px solid #dce0e6;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
   animation: slideDown 0.3s ease;
 }
 
-.admin-btn {
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-  color: white;
-  border: none;
-  padding: 10px 16px;
+/* ==================== 管理员面板按钮 ==================== */
+.admin-panel button {
+  padding: 10px 18px;
   border-radius: 8px;
-  margin-right: 10px;
+  border: none;
   cursor: pointer;
+  font-weight: 500;
   font-size: 14px;
   transition: all 0.2s;
-  font-weight: 500;
+  margin-right: 10px;
+  margin-bottom: 10px;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: #fff;
 }
 
-.admin-btn:hover {
+.admin-panel button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 10px rgba(52, 152, 219, 0.3);
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
 }
 
-.admin-btn.delete-btn {
+.admin-panel button.delete-btn {
   background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
 }
 
-.user-management {
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px solid #e6e9ef;
+/* ==================== 管理员面板 ==================== */
+.admin-panel {
+  display: none;
+  padding: 12px; /* 减少 padding */
+  background-color: #f4f6f8;
+  border-radius: 10px;
+  margin-top: 12px; /* 减少上间距 */
+  border: 1px solid #dce0e6;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  animation: slideDown 0.25s ease;
 }
 
-.user-select {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #e6e9ef;
-  border-radius: 8px;
-  margin-bottom: 10px;
-  background: white;
-  font-size: 14px;
+/* ==================== 管理员面板按钮 ==================== */
+.admin-panel button {
+  padding: 8px 14px; /* 紧凑按钮 */
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 13px;
+  transition: all 0.2s;
+  margin-right: 8px;
+  margin-bottom: 8px; /* 减小行间距 */
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: #fff;
 }
+
+.admin-panel button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(52, 152, 219, 0.3);
+}
+
+.admin-panel button.delete-btn {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+}
+
+/* ==================== 管理员菜单容器 ==================== */
+.admin-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px; /* 减少按钮间距 */
+  margin-top: 12px; /* 紧凑 */
+  padding: 8px; /* 紧凑 */
+  background-color: #ffffff;
+  border-radius: 8px;
+  border: 1px solid #dce0e6;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* ==================== 管理员菜单按钮 ==================== */
+.admin-menu .admin-menu-btn {
+  flex: 1 1 calc(50% - 8px); /* 两列布局，间距紧凑 */
+  padding: 8px 12px; /* 更小的按钮 */
+  text-align: center;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 13px;
+  color: #fff;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+}
+
+.admin-menu .admin-menu-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(39, 174, 96, 0.3);
+}
+
+/* 不同按钮主题颜色 */
+.admin-menu .admin-menu-btn.check {
+  background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+}
+
+.admin-menu .admin-menu-btn.debug {
+  background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+}
+
+.admin-menu .admin-menu-btn.init {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+}
+
+/* ==================== 动画 ==================== */
+@keyframes slideDown {
+  0% { opacity: 0; transform: translateY(-8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* ====================  ==================== */
+
+
 
 /* 在线用户列表 */
 .online-users {

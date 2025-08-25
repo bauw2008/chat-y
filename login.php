@@ -63,9 +63,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset(
             // 设置用户会话信息
             $_SESSION['username'] = $username;
             $_SESSION['role'] = $user['role'];
+			
+			// 从 session 取出重定向地址
+			$redirect_url = $_SESSION['redirect_after_login'] ?? 'chat.php';
+			unset($_SESSION['redirect_after_login']);
             
-            echo json_encode(['status' => 'success', 'message' => '登录成功']);
-            exit;
+                echo json_encode([
+				'status'   => 'success',
+				'message'  => '登录成功',
+				'redirect' => $redirect_url
+			]);
+			exit;
         } else {
             echo json_encode(['status' => 'error', 'message' => '用户名或密码错误']);
             exit;
@@ -86,8 +94,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reg_username']) && is
         exit;
     }
     
-    if (strlen($password) < 6) {
-        echo json_encode(['status' => 'error', 'message' => '密码至少6个字符']);
+    if (strlen($password) < 3) {
+        echo json_encode(['status' => 'error', 'message' => '密码至少3个字符']);
         exit;
     }
     
