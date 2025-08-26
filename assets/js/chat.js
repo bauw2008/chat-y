@@ -2143,12 +2143,49 @@ async function loadSharedFiles() {
 function toggleChangePasswordMenu() {
     const menu = document.getElementById('change-password-menu');
     menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+    
+    // 确保切换功能已初始化
+    setTimeout(initPasswordToggle, 10);
+}
+
+// 密码显示/隐藏功能 - 独立函数
+function initPasswordToggle() {
+    document.querySelectorAll('.toggle-password').forEach(button => {
+        // 确保不会重复绑定事件
+        if (!button.hasAttribute('data-toggle-bound')) {
+            button.setAttribute('data-toggle-bound', 'true');
+            
+            button.addEventListener('click', function() {
+                const input = this.parentElement.querySelector('input');
+                const isPassword = input.type === 'password';
+                const icon = this.querySelector('.eye-icon');
+                
+                // 切换输入框类型
+                input.type = isPassword ? 'text' : 'password';
+                
+                // 切换图标
+                if (isPassword) {
+                    // 显示隐藏状态的图标（睁眼）
+                    icon.innerHTML = '<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>';
+                } else {
+                    // 显示可见状态的图标（闭眼）
+                    icon.innerHTML = '<path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>';
+                }
+                
+                // 更新ARIA标签
+                this.setAttribute('aria-label', isPassword ? '隐藏密码' : '显示密码');
+            });
+        }
+    });
 }
 
 // 通用密码修改
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('change-password-form');
     if (!form) return;
+    
+    // 页面加载时立即初始化密码显示/隐藏功能
+    initPasswordToggle();
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -2184,6 +2221,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
 
 // 支持Shift+Enter换行和自动调整高度
 document.addEventListener('DOMContentLoaded', function() {
@@ -2227,6 +2265,101 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 100);
     }
 });
+
+// ==================== 主题 ====================
+
+// 主题配置
+const themes = {
+    'default': {
+        background: 'linear-gradient(135deg, rgba(58, 123, 213, 0.85) 0%, rgba(44, 62, 80, 0.85) 100%)',
+        backdropFilter: 'blur(15px)',
+        boxShadow: '4px 0 20px rgba(0, 0, 0, 0.15), inset 1px 0 0 rgba(255, 255, 255, 0.1)',
+        borderRight: '1px solid rgba(255, 255, 255, 0.15)'
+    },
+    'colorful': {
+        background: 'linear-gradient(135deg, rgba(58, 123, 213, 0.22) 0%, rgba(156, 39, 176, 0.20) 40%, rgba(233, 30, 99, 0.18) 100%)',
+        backdropFilter: 'blur(5px) saturate(160%)',
+        boxShadow: 'inset 0 0 25px rgba(255, 255, 255, 0.08), 4px 0 20px rgba(0, 0, 0, 0.25)',
+        borderRight: '1px solid rgba(255, 255, 255, 0.12)'
+    },
+    'crystal': {
+        background: 'linear-gradient(135deg, rgba(58, 123, 213, 0.22) 0%, rgba(0, 210, 255, 0.18) 40%, rgba(44, 62, 80, 0.28) 100%)',
+        backdropFilter: 'blur(4px) saturate(160%)',
+        boxShadow: 'inset 0 0 25px rgba(255, 255, 255, 0.06), 4px 0 20px rgba(0, 0, 0, 0.25)',
+        borderRight: '1px solid rgba(255, 255, 255, 0.12)'
+    },
+    'dark': {
+        background: 'linear-gradient(135deg, rgba(26, 26, 46, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%)',
+        backdropFilter: 'blur(10px)',
+        boxShadow: '4px 0 20px rgba(0, 0, 0, 0.3), inset 1px 0 0 rgba(255, 255, 255, 0.05)',
+        borderRight: '1px solid rgba(255, 255, 255, 0.08)'
+    }
+};
+
+// 初始化主题
+function initTheme() {
+    const savedTheme = localStorage.getItem('selectedTheme') || 'default';
+    applyTheme(savedTheme);
+    
+    // 标记当前选中的主题
+    document.querySelectorAll('.theme-option').forEach(option => {
+        if (option.getAttribute('data-theme') === savedTheme) {
+            option.classList.add('active');
+        } else {
+            option.classList.remove('active');
+        }
+    });
+}
+
+// 应用主题
+function applyTheme(theme) {
+    const userList = document.querySelector('.user-list');
+    const themeConfig = themes[theme];
+    
+    if (userList && themeConfig) {
+        userList.style.background = themeConfig.background;
+        userList.style.backdropFilter = themeConfig.backdropFilter;
+        userList.style.webkitBackdropFilter = themeConfig.backdropFilter;
+        userList.style.boxShadow = themeConfig.boxShadow;
+        userList.style.borderRight = themeConfig.borderRight;
+    }
+    
+    // 保存到本地存储
+    localStorage.setItem('selectedTheme', theme);
+}
+
+// 主题切换功能
+document.getElementById('theme-toggle').addEventListener('click', function(e) {
+    e.stopPropagation();
+    const themePanel = document.getElementById('theme-panel');
+    themePanel.style.display = themePanel.style.display === 'block' ? 'none' : 'block';
+});
+
+// 点击主题选项
+document.querySelectorAll('.theme-option').forEach(option => {
+    option.addEventListener('click', function() {
+        const theme = this.getAttribute('data-theme');
+        applyTheme(theme);
+        document.getElementById('theme-panel').style.display = 'none';
+        
+        // 更新选中状态
+        document.querySelectorAll('.theme-option').forEach(opt => {
+            opt.classList.remove('active');
+        });
+        this.classList.add('active');
+    });
+});
+
+// 点击页面其他区域关闭主题面板
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#theme-panel') && !e.target.closest('#theme-toggle')) {
+        document.getElementById('theme-panel').style.display = 'none';
+    }
+});
+
+// 页面加载时初始化主题
+document.addEventListener('DOMContentLoaded', initTheme);
+
 
 // ==================== 兼容性支持 ====================
 

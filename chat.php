@@ -208,8 +208,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
     <div class="chat-container">
         <div class="user-list">
             <h3 class="user-list-title">
-                聊天室
-               <!--  <button class="close-side-menu" onclick="closeSideMenu()">×</button> -->
+               聊天室
+               <button class="close-side-menu" onclick="closeSideMenu()">×</button>
             </h3>
             
             <!-- 用户信息区域 -->
@@ -245,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                 <!-- 管理员面板 -->
                 <?php if ($role === 'admin'): ?>
                 <div id="admin-panel" class="admin-panel">
-                    <button id="clear-chat" class="admin-btn">清理聊天记录</button>
+                    <button id="clear-chat" class="admin-btn">清理内容</button>
                     <button id="manage-users" class="admin-btn">管理用户</button>
                     <button id="manage-announcement" class="admin-btn" onclick="toggleAnnouncementForm()">发布公告</button>
                     
@@ -267,10 +267,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
 					
 					    <!-- 额外的跳转菜单 -->
 					<div class="admin-menu">
-						<a href="api.php" class="admin-btn">接口</a>
-						<a href="check_db.php" class="admin-btn">check</a>
-						<a href="debug.php" class="admin-btn">debug</a>
-						<a href="index.php" class="admin-btn">初始化</a>
+						<a href="debug.php" class="admin-btn">调试</a>
+						<a href="index.php" class="admin-btn" onclick="return confirm('⚠️ 确定要重置吗？此操作不可撤销！')">重置</a>
 					</div>
                 </div>
                 <?php endif; ?>
@@ -303,14 +301,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
 			</div>
 
             <!-- 修改密码弹窗 -->
-            <div id="change-password-menu" class="dropdown-menu" style="display: none;">
-                <form id="change-password-form">
-                    <input type="password" id="old-password" name="old_password" placeholder="旧密码" required autocomplete="current-password"><br>
-                    <input type="password" id="new-password" name="new_password" placeholder="新密码" required autocomplete="new-password"><br>
-                    <input type="password" id="confirm-password" name="confirm_password" placeholder="确认新密码" required autocomplete="new-password"><br>
-                    <button type="submit">提交修改</button>
-                </form>
-            </div>
+			<div id="change-password-menu" class="dropdown-menu" style="display: none;">
+				<form id="change-password-form">
+					<!-- 旧密码字段 -->
+					<div class="password-input-container">
+						<input type="password" id="old-password" name="old_password" placeholder="旧密码" required autocomplete="current-password">
+						<button type="button" class="toggle-password" aria-label="显示密码">
+							<svg viewBox="0 0 24 24" class="eye-icon">
+								<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+							</svg>
+						</button>
+					</div>
+					
+					<!-- 新密码字段 -->
+					<div class="password-input-container">
+						<input type="password" id="new-password" name="new_password" placeholder="新密码" required autocomplete="new-password">
+						<button type="button" class="toggle-password" aria-label="显示密码">
+							<svg viewBox="0 0 24 24" class="eye-icon">
+								<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+							</svg>
+						</button>
+					</div>
+					
+					<!-- 确认密码字段 -->
+					<div class="password-input-container">
+						<input type="password" id="confirm-password" name="confirm_password" placeholder="确认新密码" required autocomplete="new-password">
+						<button type="button" class="toggle-password" aria-label="显示密码">
+							<svg viewBox="0 0 24 24" class="eye-icon">
+								<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+							</svg>
+						</button>
+					</div>
+					
+					<button type="submit">提交修改</button>
+				</form>
+			</div>
 
             <!-- 在线用户列表 -->
             <div class="online-users">
@@ -364,6 +389,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                             <div class="chat-icon">➕</div>
                             <div class="chat-text">更多</div>
                         </div>
+						
+						    <!-- 添加主题切换按钮 -->
+						<div class="chat-input-action clickable" id="theme-toggle">
+							<div class="chat-icon">🎨</div>
+							<div class="chat-text">主题</div>
+						</div>
+						
 						    <!-- 添加菜单按钮 -->
 						<div class="chat-input-action clickable" id="menu-toggle">
 							<div class="chat-icon">☰</div>
@@ -387,6 +419,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
 				<!-- 侧滑菜单 -->
 				<div class="user-list">
 					<!-- 菜单内容 -->
+				</div>
+				
+				<!-- 主题选择面板 -->
+				<div id="theme-panel" class="theme-panel">
+					<div class="theme-title">选择主题</div>
+					<div class="theme-options">
+						<div class="theme-option" data-theme="default" title="默认">
+							<div class="theme-color" style="background: linear-gradient(135deg, #3a7bd5, #2c3e50);"></div>
+							<div class="theme-name">默认</div>
+						</div>
+						<div class="theme-option" data-theme="colorful" title="多彩琉璃水晶">
+							<div class="theme-color" style="background: linear-gradient(135deg, #3a7bd5, #9c27b0, #e91e63);"></div>
+							<div class="theme-name">多彩</div>
+						</div>
+						<div class="theme-option" data-theme="crystal" title="琉璃水晶透明">
+							<div class="theme-color" style="background: linear-gradient(135deg, #3a7bd5, #00d2ff, #2c3e50);"></div>
+							<div class="theme-name">水晶</div>
+						</div>
+						<div class="theme-option" data-theme="dark" title="全暗">
+							<div class="theme-color" style="background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);"></div>
+							<div class="theme-name">全暗</div>
+						</div>
+					</div>
 				</div>
 
 				<!-- 遮罩层 -->
