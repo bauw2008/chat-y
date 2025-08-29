@@ -223,22 +223,46 @@ try {
         json_response(['status'=>'ok','users'=>$users]);
     }
 
-    // 删除指定用户
-    elseif ($action === 'delete_user') {
-        if (!isset($_SESSION['username']) || ($_SESSION['role'] ?? '') !== 'admin') {
-            json_response(['status'=>'error','message'=>'无权限'],403);
-        }
+	// 删除指定用户
+	elseif ($action === 'delete_user') {
+		try {
+			if (!isset($_SESSION['username']) || ($_SESSION['role'] ?? '') !== 'admin') {
+				json_response(['status'=>'error','message'=>'无权限'],403);
+			}
 
-        $usernameToDelete = trim($_POST['username'] ?? '');
-        if ($usernameToDelete === '' || $usernameToDelete === $_SESSION['username']) {
-            json_response(['status'=>'error','message'=>'无法删除该用户'],400);
-        }
+			$usernameToDelete = trim($_POST['username'] ?? '');
+			if ($usernameToDelete === '') {
+				json_response(['status'=>'error','message'=>'用户名不能为空'],400);
+			}
+			
+			if ($usernameToDelete === $_SESSION['username']) {
+				json_response(['status'=>'error','message'=>'不能删除当前登录用户'],400);
+			}
 
-        $stmt = $db极速prepare("DELETE FROM users WHERE username=:u AND role!='admin'");
-        $stmt->execute([':u'=>$usernameToDelete]);
+			// 先检查用户是否存在且不是管理员
+			$checkStmt = $db->prepare("SELECT role FROM users WHERE username = :u");
+			$checkStmt->execute([':u'=>$usernameToDelete]);
+			$user = $checkStmt->fetch();
+			
+			if (!$user) {
+				json_response(['status'=>'error','message'=>'用户不存在'],400);
+			}
+			
+			if ($user['role'] === 'admin') {
+				json_response(['status'=>'error','message'=>'不能删除管理员用户'],400);
+			}
 
-        json_response(['status'=>'ok','message'=>"用户 $usernameToDelete 已删除"]);
-    }
+			// 执行删除
+			$stmt = $db->prepare("DELETE FROM users WHERE username=:u");
+			$stmt->execute([':u'=>$usernameToDelete]);
+
+			json_response(['status'=>'ok','message'=>"用户 $usernameToDelete 已删除"]);
+			
+		} catch (PDOException $e) {
+			error_log("删除用户错误: " . $e->getMessage());
+			json_response(['status'=>'error','message'=>'数据库错误'],500);
+		}
+	}
 
     // ---------------------- 私聊消息 ----------------------
     elseif ($action === 'send_private_message') {

@@ -929,7 +929,7 @@ function createMessageElement(msg) {
 			'<a href="$1" target="_blank" rel="noopener" style="color: #2563eb;">$1</a>'
 		);
 
-// 再处理无协议域名（更严格）
+       // 再处理无协议域名（更严格）
 		content = content.replace(
 			/(\s|^)([a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,})/gi,
 			'$1<a href="https://$2" target="_blank" rel="noopener" style="color: #2563eb;">$2</a>'
@@ -1566,7 +1566,20 @@ async function deleteUser() {
             body: form
         });
         
-        const data = await response.json();
+        // 检查HTTP状态码
+        if (!response.ok) {
+            throw new Error(`HTTP错误: ${response.status}`);
+        }
+        
+        const text = await response.text();
+        let data;
+        
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            console.error('JSON解析失败:', text);
+            throw new Error('服务器返回了无效的JSON格式');
+        }
         
         if (data.status === 'ok') {
             showToast(`用户 ${usernameToDelete} 已删除`, 'success');
@@ -1577,7 +1590,7 @@ async function deleteUser() {
         }
     } catch (error) {
         console.error('删除用户失败:', error);
-        showToast('网络错误，删除失败', 'error');
+        showToast('删除失败: ' + error.message, 'error');
     }
 }
 
