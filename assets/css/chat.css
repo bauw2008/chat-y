@@ -301,6 +301,25 @@ html, body {
   box-shadow: 0 0 0 1.5px rgba(76, 217, 100, 0.4); /* 减小外发光 */
 }
 
+.online-users::-webkit-scrollbar {
+  width: 4px;
+}
+
+.online-users::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.online-users::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+}
+
+.online-users::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+
 /* 暗色模式适配 */
 @media (prefers-color-scheme: dark) {
   .user-list {
