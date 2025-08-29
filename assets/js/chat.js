@@ -923,8 +923,18 @@ function createMessageElement(msg) {
 });
         
         // 处理链接
-        content = content.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-        
+        // 在 createMessageElement 中改进链接处理
+		content = content.replace(
+			/(https?:\/\/[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}(?:\/[^\s<>()'"，。！？；：”“‘’\u4e00-\u9fff]*)?)(?=[\s<>()'"，。！？；：”“‘’\u4e00-\u9fff]|$)/g, 
+			'<a href="$1" target="_blank" rel="noopener" style="color: #2563eb;">$1</a>'
+		);
+
+// 再处理无协议域名（更严格）
+		content = content.replace(
+			/(\s|^)([a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,})/gi,
+			'$1<a href="https://$2" target="_blank" rel="noopener" style="color: #2563eb;">$2</a>'
+		);
+     
         // 处理换行
         content = content.replace(/\n/g, '<br>');
     }
