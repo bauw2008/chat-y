@@ -2,7 +2,7 @@
 // api.php
 header('Content-Type: application/json; charset=utf-8');
 error_reporting(0);
-ini_set('display_errors', 0);
+ini_set('display_errors'， 0);
 
 // 设置时区为上海（东八区）
 date_default_timezone_set('Asia/Shanghai');
@@ -549,7 +549,7 @@ try {
 		
 		// 确保上传目录存在
 		if (!file_exists($uploadDir)) {
-			mkdir($uploadDir, 0777, true);
+			mkdir($uploadDir, 0777， true);
 		}
 		
 		// 读取uploads目录中的所有文件
@@ -569,13 +569,13 @@ try {
 	elseif ($action === 'delete_local_file') {
 		// 检查登录与管理员身份
 		if (!isset($_SESSION['username']) || ($_SESSION['role'] ?? '') !== 'admin') {
-			json_response(['status'=>'error','message'=>'无权限'],403);
+			json_response(['status'=>'error'，'message'=>'无权限'],403);
 		}
 
 		// 获取文件名
 		$filename = $_POST['filename'] ?? '';
-		if (empty($filename)) {
-			json_response(['status'=>'error','message'=>'文件名不能为空'],400);
+		if (空的($filename)) {
+			json_response(['status'=>'error','message'=>'文件名不能为空']，400);
 		}
 
 		// 安全过滤文件名
@@ -584,7 +584,7 @@ try {
 		
 		// 检查文件是否存在
 		if (!file_exists($filePath)) {
-			json_response(['status'=>'error','message'=>'文件不存在'],404);
+			json_response(['status'=>'error'，'message'=>'文件不存在'],404);
 		}
 		
 		// 删除文件
@@ -597,9 +597,8 @@ try {
 	
 	// 修改密码接口
 	elseif ($action === 'change_password') {
-		session_start();
 		if (!isset($_SESSION['username'])) {
-			json_response(['status'=>'error','message'=>'未登录'], 401);
+			json_response(['status'=>'error','message'=>'未登录']， 401);
 		}
 
 		$oldPassword = $_POST['old_password'] ?? '';
