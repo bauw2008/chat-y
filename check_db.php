@@ -1,21 +1,20 @@
 <?php
 // check_db.php
 session_start();
-header('Content-Type: application/json');
+
 $dbFile = __DIR__ . '/data/chat.db';
 
-
-
 // ==================== 权限验证代码 ====================
+
+// 未登录 → 跳转到登录页
 if (!isset($_SESSION['username'])) {
-    // 未登录：先存储想访问的页面地址，再跳转到登录页
     $_SESSION['redirect_after_login'] = $_SERVER['REQUEST_URI'];
     header("Location: login.php");
     exit;
 }
 
+// 已登录，但不是管理员 → 返回 HTML 提示页
 if ($_SESSION['role'] !== 'admin') {
-    // 已登录，但不是管理员
     header('HTTP/1.1 403 Forbidden');
     echo '<!DOCTYPE html>
     <html>
@@ -38,6 +37,10 @@ if ($_SESSION['role'] !== 'admin') {
 // ==================== 验证结束 ====================
 
 
+// ✅ 到这里说明是管理员，可以安全返回 JSON
+header('Content-Type: application/json');
+
+// 数据库不存在
 if (!file_exists($dbFile)) {
     echo json_encode(['initialized' => false]);
     exit;
@@ -45,14 +48,14 @@ if (!file_exists($dbFile)) {
 
 try {
     $db = new PDO("sqlite:$dbFile");
-    
+
     // 检查用户表是否存在
     $tableExists = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")->fetch();
     if (!$tableExists) {
         echo json_encode(['initialized' => false]);
         exit;
     }
-    
+
     // 检查管理员账户是否存在
     $stmt = $db->prepare("SELECT COUNT(*) FROM users WHERE username = :username");
     $stmt->execute([':username' => 'admin']);

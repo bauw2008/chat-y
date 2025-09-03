@@ -112,16 +112,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>和 <?= htmlspecialchars($targetUser) ?> 的私聊</title>
 <link rel="stylesheet" href="assets/css/chat.css">
+<link rel="icon" href="images/favicon.svg" type="image/svg+xml">
 </head>
 <body>
 <div class="chat-container private-chat-container">
   <div class="private-chat-header">
-    <a href="chat.php" class="back-button">← 返回大厅</a>
-    <div class="private-user-info">
-      <div style="font-weight:500;">与 <?= htmlspecialchars($targetUser) ?> 聊天</div>
-      <div style="font-size:12px; opacity:0.8;" id="user-status">状态检测中...</div>
-    </div>
+    <a href="chat.php" class="back-button" style="color: #007bff; text-decoration: none; font-size: 14px; white-space: nowrap;">← 返回大厅</a>
+
+    <div class="private-user-info" style="text-align: center; flex: 1;">
+    <div style="font-weight: 500; font-size: 16px; margin-bottom: 2px;">与 <?= htmlspecialchars($targetUser) ?> 聊天</div>
+    <div style="font-size: 12px; color: #666;" id="user-status">状态检测中...</div>
   </div>
+     <div style="font-size: 11px; color: #888; font-style: italic; text-align: right; max-width: 120px; margin-left: 20px;" id="targetUserSignature">
+    加载中...
+  </div>
+</div>
 
   <div class="chat-area">
     <!-- 聊天内容区域 -->
@@ -133,28 +138,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
     <div class="input-container">
         <div class="chat-input-panel">
             <!-- 工具栏区域 -->
-                    <div class="chat-input-actions">
-                        <div class="chat-input-action clickable">
-                            <div class="chat-icon">📎</div>
-                            <div class="chat-text">上传</div>
-                        </div>
-                        <div class="chat-input-action clickable">
-                            <div class="chat-icon">😊</div>
-                            <div class="chat-text">表情</div>
-                        </div>
-                        <div class="chat-input-action clickable">
-                            <div class="chat-icon">🖼️</div>
-                            <div class="chat-text">贴纸</div>
-                        </div>
-						<div class="chat-input-action clickable">
-                            <div class="chat-icon">🧹</div>
-                            <div class="chat-text">清空</div>
-                        </div>						
-                        <div class="chat-input-action clickable">
-                            <div class="chat-icon">➕</div>
-                            <div class="chat-text">更多</div>
-                        </div>
-                    </div>
+            <div class="chat-input-actions">
+                <div class="chat-input-action clickable">
+                    <div class="chat-icon">📎</div>
+                    <div class="chat-text">上传</div>
+                </div>
+                <div class="chat-input-action clickable">
+                    <div class="chat-icon">😊</div>
+                    <div class="chat-text">表情</div>
+                </div>
+                <div class="chat-input-action clickable">
+                    <div class="chat-icon">🖼️</div>
+                    <div class="chat-text">贴纸</div>
+                </div>
+                <div class="chat-input-action clickable">
+                    <div class="chat-icon">🧹</div>
+                    <div class="chat-text">清空</div>
+                </div>						
+                <div class="chat-input-action clickable">
+                    <div class="chat-icon">➕</div>
+                    <div class="chat-text">更多</div>
+                </div>
+            </div>
             
             <!-- 输入区域 -->
             <div class="chat-input-panel-inner">
@@ -180,7 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
         </div>	
 		
         <!-- 更多工具菜单 -->
-        <div id="private-more-tools" class="dropdown-menu"">
+        <div id="private-more-tools" class="dropdown-menu">
             <!-- 贴纸图片通过JavaScript动态加载 -->
         </div>
         
@@ -207,10 +212,29 @@ window.chatConfig = {
 
 // 文件上传自动提交
 document.getElementById('file-input').addEventListener('change', function() {
-    console.log('文件选择变化');
     if (this.files.length > 0) {
-        console.log('提交上传表单');
         document.getElementById('upload-form').submit();
+    }
+});
+
+// 页面加载后加载目标用户的签名
+document.addEventListener('DOMContentLoaded', function() {
+    // 调用chat.js中已有的函数
+    if (typeof fetchUserSignature === 'function') {
+        fetchUserSignature(targetUser).then(signature => {
+            const signatureElement = document.getElementById('targetUserSignature');
+            if (signatureElement) {
+                const displaySignature = signature.trim() || '这个人很懒，什么都没有留下...';
+                signatureElement.textContent = `${displaySignature}`;
+            }
+        }).catch(error => {
+            console.error('加载签名失败:', error);
+            const signatureElement = document.getElementById('targetUserSignature');
+            if (signatureElement) {
+                signatureElement.textContent = '「签名加载失败」';
+                signatureElement.style.color = '#ff6b6b';
+            }
+        });
     }
 });
 

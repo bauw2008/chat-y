@@ -1,5 +1,5 @@
 <?php
-// chat.php - 修复版聊天室主页面
+// chat.php
 session_start();
 
 // 检查数据库是否已初始化
@@ -41,10 +41,15 @@ try {
     $stmt->execute([':username' => $_SESSION['username']]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
     
+    // 如果数据库中的session_id与当前session_id不匹配，说明已在其他地方登录
     if ($user && $user['session_id'] !== session_id()) {
-        // 会话无效，说明在别处登录了
+        // 清除当前会话
+        session_unset();
         session_destroy();
-        header("Location: login.php?error=账号已在其他地方登录");
+        
+        // 设置错误消息并重定向到登录页面
+        $_SESSION['login_error'] = "账号已在其他地方登录";
+        header("Location: login.php");
         exit;
     }
 } catch (Exception $e) {
@@ -194,6 +199,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
         }
     }
 }
+
+// 获取用户签名
+$signature = '';
+try {
+    $stmt = $db->prepare("SELECT signature FROM users WHERE username = :username");
+    $stmt->execute([':username' => $username]);
+    $userData = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($userData && !empty($userData['signature'])) {
+        $signature = $userData['signature'];
+    }
+} catch (Exception $e) {
+    // 如果signature字段不存在，忽略错误
+    error_log("获取签名错误: " . $e->getMessage());
+}
 ?>
 
 <!DOCTYPE html>
@@ -203,6 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>聊天室</title>
   <link rel="stylesheet" href="assets/css/chat.css">
+  <link rel="icon" href="images/favicon.svg" type="image/svg+xml">
 </head>
 <body>
     <div class="chat-container">
@@ -221,7 +241,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
                         <div class="user-role"><?php echo $role === 'admin' ? '管理员' : '普通用户'; ?></div>
                     </div>
                 </div>
-                
+				
+			<!-- 签名区域 -->
+			<div class="signature-container">
+				<div class="signature-display">
+					<div class="signature-content" id="signatureContent">
+						<?php echo !empty($signature) ? htmlspecialchars($signature) : '😊这个人很懒，什么都没有留下...'; ?>
+					</div>
+					<span class="edit-signature" id="editSignatureBtn">✏️</span>
+				</div>
+				
+				<div class="signature-edit" id="signatureEdit" style="display: none;">
+					<textarea id="signatureInput" class="signature-input" placeholder="请输入您的签名...调用一言[hitokoto]"><?php echo !empty($signature) ? htmlspecialchars($signature) : ''; ?></textarea>
+					<div class="signature-actions">
+						<button id="hitokotoBtn" class="api-btn">获取一言</button>
+						<button id="saveSignatureBtn" class="save-btn">保存</button>
+						<button id="cancelEditBtn" class="cancel-btn">取消</button>
+					</div>
+				</div>
+			</div>
+   
                 <div class="profile-actions">
                     <?php if ($role === 'admin'): ?>
                         <button class="profile-btn" onclick="toggleAdminPanel()">
@@ -303,6 +342,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file-input'])) {
             <!-- 修改密码弹窗 -->
 			<div id="change-password-menu" class="dropdown-menu" style="display: none;">
 				<form id="change-password-form">
+					<!-- 隐藏用户名字段（浏览器/密码管理器用，不显示给用户） -->				
+					<input type="text" name="username" value="当前用户名" autocomplete="username" hidden>
+				
 					<!-- 旧密码字段 -->
 					<div class="password-input-container">
 						<input type="password" id="old-password" name="old_password" placeholder="旧密码" required autocomplete="current-password">
@@ -508,7 +550,7 @@ document.getElementById('file-input').addEventListener('change', function() {
         document.getElementById('upload-form').submit();
     }
 });
-
+	
 </script>
 
 <script src="assets/js/chat.js"></script>

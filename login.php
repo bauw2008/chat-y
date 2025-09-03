@@ -1,12 +1,12 @@
 <?php
-// login.php - 登录页面
+// login.php
 session_start();
 
 // 检查数据库是否已初始化
 $dbFile = __DIR__ . '/data/chat.db';
-$initialized = false;
+$initialized = file_exists($dbFile);
 
-if (file_exists($dbFile)) {
+if ($initialized) {
     try {
         $db = new PDO("sqlite:$dbFile");
         $stmt = $db->prepare("SELECT COUNT(*) FROM users WHERE username = 'admin'");
@@ -29,102 +29,13 @@ if (isset($_SESSION['username'])) {
     exit;
 }
 
-// 处理登录请求
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset($_POST['password'])) {
-    $username = trim($_POST['username']);
-    $password = trim($_POST['password']);
-    
-    try {
-        $db = new PDO("sqlite:$dbFile");
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        
-        // 验证用户 credentials
-        $stmt = $db->prepare("SELECT * FROM users WHERE username = :username");
-        $stmt->execute([':username' => $username]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($user && password_verify($password, $user['password'])) {
-            // 生成新的会话ID
-            $newSessionId = session_id();
-            
-            // 检查该用户是否已经在其他地方登录
-            if (!empty($user['session_id'])) {
-                // 如果已有会话，记录日志（踢掉前一个登录）
-                error_log("用户 {$username} 被新登录踢出，旧会话: {$user['session_id']}");
-            }
-            
-            // 更新用户的当前会话ID和最后活动时间
-            $stmt = $db->prepare("UPDATE users SET session_id = :session_id, last_active = datetime('now'), is_online = 1 WHERE username = :username");
-            $stmt->execute([
-                ':session_id' => $newSessionId,
-                ':username' => $username
-            ]);
-            
-            // 设置用户会话信息
-            $_SESSION['username'] = $username;
-            $_SESSION['role'] = $user['role'];
-			
-			// 从 session 取出重定向地址
-			$redirect_url = $_SESSION['redirect_after_login'] ?? 'chat.php';
-			unset($_SESSION['redirect_after_login']);
-            
-                echo json_encode([
-				'status'   => 'success',
-				'message'  => '登录成功',
-				'redirect' => $redirect_url
-			]);
-			exit;
-        } else {
-            echo json_encode(['status' => 'error', 'message' => '用户名或密码错误']);
-            exit;
-        }
-    } catch (Exception $e) {
-        echo json_encode(['status' => 'error', 'message' => '登录失败，请稍后重试']);
-        exit;
-    }
-}
-
-// 处理注册请求
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reg_username']) && isset($_POST['reg_password'])) {
-    $username = trim($_POST['reg_username']);
-    $password = trim($_POST['reg_password']);
-    
-    if (strlen($username) < 3) {
-        echo json_encode(['status' => 'error', 'message' => '用户名至少3个字符']);
-        exit;
-    }
-    
-    if (strlen($password) < 3) {
-        echo json_encode(['status' => 'error', 'message' => '密码至少3个字符']);
-        exit;
-    }
-    
-    try {
-        $db = new PDO("sqlite:$dbFile");
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        
-        // 检查用户名是否已存在
-        $stmt = $db->prepare("SELECT COUNT(*) FROM users WHERE username = :username");
-        $stmt->execute([':username' => $username]);
-        if ($stmt->fetchColumn() > 0) {
-            echo json_encode(['status' => 'error', 'message' => '用户名已存在']);
-            exit;
-        }
-        
-        // 创建新用户
-        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-        $stmt = $db->prepare("INSERT INTO users (username, password, role, created_at) VALUES (:username, :password, 'user', datetime('now'))");
-        $stmt->execute([
-            ':username' => $username,
-            ':password' => $hashedPassword
-        ]);
-        
-        echo json_encode(['status' => 'success', 'message' => '注册成功，请登录']);
-        exit;
-    } catch (Exception $e) {
-        echo json_encode(['status' => 'error', 'message' => '注册失败，请稍后重试']);
-        exit;
-    }
+// 检查是否有被踢出的错误消息
+$loginError = '';
+if (isset($_GET['reason']) && $_GET['reason'] === 'session_terminated') {
+    $loginError = '账号已在其他地方登录，当前会话已终止';
+} elseif (isset($_SESSION['login_error'])) {
+    $loginError = $_SESSION['login_error'];
+    unset($_SESSION['login_error']);
 }
 ?>
 <!DOCTYPE html>
@@ -134,12 +45,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reg_username']) && is
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>聊天室登录</title>
     <link rel="stylesheet" href="assets/css/login.css">
+	<link rel="icon" href="images/favicon.svg" type="image/svg+xml">
 </head>
 <body>
     <div class="login-container">
         <div class="login-box">
             <form id="loginForm">
-                <h3 class="login-title">登录聊天室</h3>
+                <h3 class="login-title">WEB聊天室</h3>
+                <?php if (!empty($loginError)): ?>
+                <div class="error-message"><?php echo htmlspecialchars($loginError); ?></div>
+                <?php endif; ?>				
+
                 <input type="text" id="username" name="username" placeholder="用户名" required autocomplete="username">
                 <input type="password" id="password" name="password" placeholder="密码" required autocomplete="current-password">
                 <div id="loginError" class="error-message"></div>

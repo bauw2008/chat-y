@@ -1,7 +1,7 @@
 <?php
 // init_db.php
 session_start();
-header('Content-Type: application/json; charset=utf-8');
+
 $dbFile = __DIR__ . '/data/chat.db';
 
 
@@ -38,6 +38,9 @@ if ($_SESSION['role'] !== 'admin') {
 // ==================== 验证结束 ====================
 
 
+// ✅ 到这里说明是管理员，可以安全返回 JSON
+header('Content-Type: application/json; charset=utf-8');
+
 // 删除现有数据库文件
 if (file_exists($dbFile)) {
     if (!unlink($dbFile)) {
@@ -65,6 +68,7 @@ try {
             username TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'user',
+			signature TEXT DEFAULT '',  -- 添加签名字段
             last_active DATETIME,
             is_online INTEGER DEFAULT 0,
             session_id VARCHAR(255) NULL,
