@@ -1497,13 +1497,13 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  min-width: 36px;   /* 最小宽度保证圆形 */
   height: 36px;
-  padding: 0;
+  padding: 0 8px;    /* 默认给文字留空间 */
   background: rgba(255, 255, 255, 0.4);
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
-  border-radius: 50%;
+  border-radius: 18px;
   font-size: 14px;
   color: #333;
   white-space: nowrap;
@@ -1519,27 +1519,24 @@ html, body {
 .chat-input-action::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, transparent 100%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
+  top: 0; 
+  left: -100%;
+  width: 200%; 
+  height: 100%;
+  background: linear-gradient(120deg, rgba(255,255,255,0.4) 0%, transparent 60%);
+  transition: transform 0.6s ease;
+  transform: translateX(-100%);
 }
 
 .chat-input-action:hover {
-  background: rgba(255, 255, 255, 0.6);
-  border-color: rgba(255, 255, 255, 0.5);
-  width: auto;
-  padding: 0 12px;
-  border-radius: 18px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   transform: translateY(-1px);
 }
 
 .chat-input-action:hover::before {
-  opacity: 1;
+  transform: translateX(0);
 }
 
 /* 工具栏图标 */
@@ -1560,21 +1557,46 @@ html, body {
 
 /* 工具栏文字 */
 .chat-text {
-  font-weight: 500;
-  font-size: 12px;
-  max-width: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
   opacity: 0;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  margin-left: 6px;
+  white-space: nowrap;
+  max-width: 0;
   overflow: hidden;
-  transition: all 0.3s ease;
-  margin-left: 0;
-  z-index: 1;
 }
 
 .chat-input-action:hover .chat-text {
-  max-width: 100px;
+  transform: scaleX(1);
   opacity: 1;
-  margin-left: 6px;
+  max-width: 100px;
 }
+
+/* 暗色模式适配 */
+@media (prefers-color-scheme: dark) {
+  .chat-input-actions {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .chat-input-action {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+  
+  .chat-input-action:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+  
+  .chat-input-action::before {
+    background: linear-gradient(120deg, rgba(255,255,255,0.2) 0%, transparent 60%);
+  }
+}
+
+
 
 /* 输入区域内部 - 玻璃质感，增加高度 */
 .chat-input-panel-inner {
